@@ -1,0 +1,16 @@
+.git
+.idea
+.bsp
+out
+target
+tmp
+simWorkspace
+generated_rtl*
+build
+.DS_Store
+.stfolder
+.bloop
+.metals
+.vscode
+SavedWaveform
+.deprecated
