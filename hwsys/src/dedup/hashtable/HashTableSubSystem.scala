@@ -11,6 +11,7 @@ case class HashTableConfig (hashValWidth: Int = 256,
                             expBucketSize: Int = 32, 
                             hashTableOffset: BigInt = (BigInt(1) << 30), 
                             bfEnable: Boolean = true,
+                            bfOptimizedReconstruct: Boolean = false,
                             sizeFSMArray: Int = 8) {
   // Instr Decoder
   val readyQueueLogDepth = 7

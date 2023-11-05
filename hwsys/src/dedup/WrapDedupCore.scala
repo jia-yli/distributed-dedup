@@ -45,10 +45,18 @@ case class DedupConfig() {
                                 expBucketSize = 8, 
                                 hashTableOffset = (BigInt(1) << 30), 
                                 bfEnable = true,
+                                bfOptimizedReconstruct = true,
                                 sizeFSMArray = 6)
 
   // 1 << 27 = 8Gib/64B, for real system:
-  // val htConf = HashTableConfig (hashValWidth = 256, ptrWidth = 32, hashTableSize = (BigInt(1) << 27), expBucketSize = 8, hashTableOffset = (BigInt(1) << 30), bfEnable = false)
+  // val htConf = HashTableConfig (hashValWidth = 256, 
+  //                               ptrWidth = 32, 
+  //                               hashTableSize = (BigInt(1) << 27), 
+  //                               expBucketSize = 8, 
+  //                               hashTableOffset = (BigInt(1) << 30), 
+  //                               bfEnable = true,
+  //                               bfOptimizedReconstruct = true,
+  //                               sizeFSMArray = 6)
 
   val pwConf = PageWriterConfig()
 }

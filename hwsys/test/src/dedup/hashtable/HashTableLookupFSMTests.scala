@@ -275,7 +275,14 @@ object HashTableFSMTBSim {
 }
 
 object HashTableLookupHelpers{
-  val htConf = HashTableConfig (hashValWidth = 256, ptrWidth = 32, hashTableSize = 1024*8, expBucketSize = 128, hashTableOffset = (BigInt(1) << 30), bfEnable = false)
+  val htConf = HashTableConfig (hashValWidth = 256, 
+                                ptrWidth = 32, 
+                                hashTableSize = 1024*8, 
+                                expBucketSize = 128, 
+                                hashTableOffset = (BigInt(1) << 30), 
+                                bfEnable = true,
+                                bfOptimizedReconstruct = true,
+                                sizeFSMArray = 6)
   // val htConf = DedupConfig().htConf
 
   def insertInstrGen(SHA3 : BigInt) : BigInt = {

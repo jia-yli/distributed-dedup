@@ -175,7 +175,11 @@ case class HashTableLookupFSM (htConf: HashTableConfig, FSMId: Int = 0) extends 
     }
 
     FETCH_INSTRUCTION.whenIsActive {
-      io.instrStrmIn.ready := True
+      // propagate pressure to previous stage
+      // make sure always able to fire result
+      // avoid deadlock in distributed case by
+      // avoid lock bucket unnecessarily
+      io.instrStrmIn.ready := io.res.ready 
       io.res.setIdle()
       io.lockReq.setIdle()
       io.mallocIdx.setBlocked()
@@ -420,6 +424,15 @@ case class HashTableLookupFSM (htConf: HashTableConfig, FSMId: Int = 0) extends 
           needMetaDataWriteBack      := False
           needCurrentEntryWriteBack  := True
           needPrevEntryWriteBack     := False
+
+          // check if optimized BF reconstruct is enabled
+          if (htConf.bfEnable && htConf.bfOptimizedReconstruct) {
+            when(currentEntry.next === 0){
+              // lookup exist(not FP), but we reach the last, we can reconstruct
+              bucketMetaData.bloomFilter := reconstructedBloomFilter
+              needMetaDataWriteBack      := True
+            }
+          }          
           goto(WRITE_BACK)
         }.otherwise{
           // new, insert
