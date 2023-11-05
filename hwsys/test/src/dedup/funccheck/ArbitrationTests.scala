@@ -1,5 +1,5 @@
 package dedup
-package hashtable
+package funccheck
 
 
 import org.scalatest.funsuite.AnyFunSuite
@@ -13,12 +13,12 @@ import scala.collection.mutable
 import scala.collection.mutable._
 import scala.util.Random
 
-class SanityTests extends AnyFunSuite {
-  test("SanityTest: Arbitration"){
+class ArbitrationTests extends AnyFunSuite {
+  test("ArbitrationTest: Arbitration order"){
     // dummy allocator with sequential dispatcher in mallocIdx
     // we can predict the allocated address in simple golden model in this setup
-    val compiledRTL = if (sys.env.contains("VCS_HOME")) SimConfig.withVpdWave.withVCS.compile(new SanityTestTB())
-    else SimConfig.withWave.compile(new SanityTestTB())
+    val compiledRTL = if (sys.env.contains("VCS_HOME")) SimConfig.withVpdWave.withVCS.compile(new ArbitrationTestTB())
+    else SimConfig.withWave.compile(new ArbitrationTestTB())
 
     compiledRTL.doSim { dut =>
       dut.clockDomain.forkStimulus(period = 2)
@@ -62,7 +62,7 @@ class SanityTests extends AnyFunSuite {
   }
 }
 
-case class SanityTestTB() extends Component{
+case class ArbitrationTestTB() extends Component{
 
   val io = new Bundle {
     val in0      = slave Stream(UInt(1 bits))

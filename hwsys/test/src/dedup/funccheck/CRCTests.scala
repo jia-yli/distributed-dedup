@@ -1,4 +1,4 @@
-package dedup
+package dedup.funccheck
 
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.core._

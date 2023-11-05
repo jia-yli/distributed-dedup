@@ -187,7 +187,7 @@ object DedupSysFuncSim {
       assert(opCode == 1)
       if (respIdx < uniquePageNum){
         dedupSysInputData1p5.enqueue(SimInstrHelpers.readInstrGen(SHA3Hash))
-        dedupSysInputData2.enqueue(SimInstrHelpers.eraseInstrGen(0,SHA3Hash))
+        dedupSysInputData2.enqueue(SimInstrHelpers.eraseInstrGen(SHA3Hash))
         uniquePageSha3.append(SHA3Hash)
       }
 

@@ -9,10 +9,6 @@ import spinal.crypto.hash.sha3._
 import util.Stream2StreamFragment
 import scala.util.Random
 
-import dedup.bloomfilter.BloomFilterConfig
-// import dedup.bloomfilter.BloomFilterSubSystem
-// import dedup.bloomfilter.BloomFilterLookupResEnum
-
 import dedup.hashtable.HashTableConfig
 import dedup.hashtable.HashTableSubSystem
 
@@ -39,14 +35,17 @@ case class DedupConfig() {
   val instrQueueLogDepth = List(2,6,6) // depth = 4,64,64
 
   /** config of submodules */
-  // Bloom Filter
-  // val bfConf = BloomFilterConfig(1 << log2Up(6432424), 3) // optimal value with 4096B page size, 10GB, 50% occupacy
-  val bfConf = BloomFilterConfig(1 << log2Up(131072), 3) // simulation test only, avoid long init time
   // SHA3 
   val sha3Conf = SHA3Config(dataWidth = 512, sha3Type = SHA3_256, groupSize = 64)
 
   // 8192x4 bucket x 8 entry/bucket = 1<<18 hash table
-  val htConf = HashTableConfig (hashValWidth = 256, ptrWidth = 32, hashTableSize = (BigInt(1) << 18), expBucketSize = 8, hashTableOffset = (BigInt(1) << 30), bfEnable = false)
+  val htConf = HashTableConfig (hashValWidth = 256, 
+                                ptrWidth = 32, 
+                                hashTableSize = (BigInt(1) << 18), 
+                                expBucketSize = 8, 
+                                hashTableOffset = (BigInt(1) << 30), 
+                                bfEnable = true,
+                                sizeFSMArray = 6)
 
   // 1 << 27 = 8Gib/64B, for real system:
   // val htConf = HashTableConfig (hashValWidth = 256, ptrWidth = 32, hashTableSize = (BigInt(1) << 27), expBucketSize = 8, hashTableOffset = (BigInt(1) << 30), bfEnable = false)

@@ -14,6 +14,8 @@ trait CommonSpinalModule extends ScalaModule with ScalafmtModule {
     ivy"com.lihaoyi::os-lib:0.8.0",
     ivy"org.scala-stm::scala-stm:0.11.0",
     ivy"com.github.spinalhdl::spinalhdl-crypto:1.1.1"
+    // TODO: use pureconfig for better config
+    // ivy"com.github.pureconfig::pureconfig:0.17.4" 
     )
 
   override def scalacPluginIvyDeps = Agg(ivy"com.github.spinalhdl::spinalhdl-idsl-plugin:$spinalVersion")

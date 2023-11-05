@@ -41,15 +41,13 @@ object  SimInstrHelpers {
     rawInstr
   }
 
-  def eraseInstrGen(crc:BigInt, sha3:BigInt, printRes : Boolean = false) : BigInt = {
-    val crc_trunc  = SimHelpers.bigIntTruncVal(crc , 96 - 1, 0)
+  def eraseInstrGen(sha3:BigInt, printRes : Boolean = false) : BigInt = {
     val sha3_trunc = SimHelpers.bigIntTruncVal(sha3, 255, 0)
     if (printRes){
-      println(s"[ERASE] opcode = 2, crc=$crc, sha3=$sha3")
+      println(s"[ERASE] opcode = 2, sha3=$sha3")
     }
     var rawInstr = BigInt(0)
     rawInstr = rawInstr + (BigInt(2) << (conf.instrTotalWidth - instrBitWidth))
-    rawInstr = rawInstr + (crc << 256)
     rawInstr = rawInstr + (sha3 << 0)
     rawInstr
   }

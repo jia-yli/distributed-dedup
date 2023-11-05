@@ -9,8 +9,8 @@ object DedupCoreOp extends SpinalEnum(binarySequential) {
 
 /* instr format: total 512 bit wide
   WRITE2FREE: opcode, host LBA start, host LBA len
-  ERASEREF:   opcode, SSD LBA, CRC1, CRC2, CRC3, SHA3
-  READSSD:    opcode, SSD LBA start, SSD LBA len */
+  ERASEREF:   opcode, SHA3
+  READSSD:    opcode, SHA3 */
 
 case class WRITE2FREEInstr (conf: DedupConfig) extends Bundle{
   val hostLBALen = UInt(conf.LBAWidth bits)
@@ -28,13 +28,11 @@ case class WRITE2FREEInstr (conf: DedupConfig) extends Bundle{
 
 case class ERASEREFInstr (conf: DedupConfig) extends Bundle{
   val SHA3Hash = Bits(256 bits)
-  val CRCHash = Vec(Bits(32 bits), 3) // this CRC is a legacy field, it is NOT used in ANY part of the code(except the deprecated ones)
   val opCode = DedupCoreOp()
 
   def decodeFromRawBits() : (ERASEREFInstr, Bits) => Unit = {
     (decoded, raw) => {
       decoded.SHA3Hash     :=             raw(0, 256 bits)
-      decoded.CRCHash      assignFromBits raw(256, 96 bits)
       decoded.opCode       assignFromBits raw((conf.instrTotalWidth - 1) downto (conf.instrTotalWidth - DedupCoreOp().getBitsWidth))
     }
   }

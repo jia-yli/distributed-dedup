@@ -5,7 +5,13 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 
-case class HashTableConfig (hashValWidth: Int = 256, ptrWidth: Int = 32, hashTableSize: BigInt = ((BigInt(1) << 27) + (BigInt(1) << 26)), expBucketSize: Int = 32, hashTableOffset: BigInt = (BigInt(1) << 30), bfEnable: Boolean = true) {
+case class HashTableConfig (hashValWidth: Int = 256, 
+                            ptrWidth: Int = 32, 
+                            hashTableSize: BigInt = ((BigInt(1) << 27) + (BigInt(1) << 26)), 
+                            expBucketSize: Int = 32, 
+                            hashTableOffset: BigInt = (BigInt(1) << 30), 
+                            bfEnable: Boolean = true,
+                            sizeFSMArray: Int = 8) {
   // Instr Decoder
   val readyQueueLogDepth = 7
   val waitingQueueLogDepth = 7
@@ -30,9 +36,6 @@ case class HashTableConfig (hashValWidth: Int = 256, ptrWidth: Int = 32, hashTab
   // Lookup FSM settings
   /** Hardware parameters (performance related) */
   val cmdQDepth = 4
-  
-  // lookup engine settings
-  val sizeFSMArray = 8
 
   // bloom filter config
   val mWidth = 5
