@@ -10,6 +10,7 @@ import util.Stream2StreamFragment
 import scala.util.Random
 
 import dedup.hashtable.HashTableConfig
+import dedup.registerfile.RegisterFileConfig
 import dedup.hashtable.HashTableSubSystem
 
 import dedup.pagewriter.PageWriterConfig
@@ -17,48 +18,51 @@ import dedup.pagewriter.PageWriterResp
 import dedup.pagewriter.SSDInstr
 import dedup.pagewriter.PageWriterSubSystem
 
-case class DedupConfig() {
+case class DedupConfig(
   /* general config */
-  val pgSize = 4 * 1024 // 4kiB
-  val wordSize = 64 // 64B
-
-  val wordSizeBit = wordSize * 8 // 512 bit
-  val pgWord = pgSize / wordSize // 64 word per page
-  assert(pgSize % wordSize == 0)
+  pgSize   : Int = 4 * 1024, // 4kiB
+  wordSize : Int = 64,       // 64B
 
   /*instr config*/
-  val instrTotalWidth = 512
-  val LBAWidth = 32
-  val hashInfoTotalWidth = 32 * 3 + 256
+  instrTotalWidth    : Int = 512,
+  LBAWidth           : Int = 32,
+  hashInfoTotalWidth : Int = 32 * 3 + 256,
 
   /* instr queue config */
-  val instrQueueLogDepth = List(2,6,6) // depth = 4,64,64
+  instrQueueLogDepth : List[Int] = List(2,6,6), // depth = 4,64,64
 
   /** config of submodules */
   // SHA3 
-  val sha3Conf = SHA3Config(dataWidth = 512, sha3Type = SHA3_256, groupSize = 64)
+  sha3Conf : SHA3Config = SHA3Config(dataWidth = 512, sha3Type = SHA3_256, groupSize = 64),
 
+  // RDMA dist hash table
+  rfConf : RegisterFileConfig = RegisterFileConfig(tagWidth = 8,      // 256 regs in register file
+                                                  nodeIdxWidth = 4    // up to 16 nodes
+                                                  ),
   // 8192x4 bucket x 8 entry/bucket = 1<<18 hash table
-  val htConf = HashTableConfig (hashValWidth = 256, 
-                                ptrWidth = 32, 
-                                hashTableSize = (BigInt(1) << 18), 
-                                expBucketSize = 8, 
-                                hashTableOffset = (BigInt(1) << 30), 
-                                bfEnable = true,
-                                bfOptimizedReconstruct = true,
-                                sizeFSMArray = 6)
+  htConf : HashTableConfig = HashTableConfig (hashValWidth = 256, 
+                                              ptrWidth = 32, 
+                                              hashTableSize = (BigInt(1) << 18), 
+                                              expBucketSize = 8, 
+                                              hashTableOffset = (BigInt(1) << 30), 
+                                              bfEnable = true,
+                                              bfOptimizedReconstruct = false,
+                                              sizeFSMArray = 6),
 
   // 1 << 27 = 8Gib/64B, for real system:
-  // val htConf = HashTableConfig (hashValWidth = 256, 
-  //                               ptrWidth = 32, 
-  //                               hashTableSize = (BigInt(1) << 27), 
-  //                               expBucketSize = 8, 
-  //                               hashTableOffset = (BigInt(1) << 30), 
-  //                               bfEnable = true,
-  //                               bfOptimizedReconstruct = true,
-  //                               sizeFSMArray = 6)
+  // htConf : HashTableConfig = HashTableConfig (hashValWidth = 256, 
+  //                                             ptrWidth = 32, 
+  //                                             hashTableSize = (BigInt(1) << 27), 
+  //                                             expBucketSize = 8, 
+  //                                             hashTableOffset = (BigInt(1) << 30), 
+  //                                             bfEnable = true,
+  //                                             bfOptimizedReconstruct = false,
+  //                                             sizeFSMArray = 6),
 
-  val pwConf = PageWriterConfig()
+  pwConf : PageWriterConfig = PageWriterConfig()){
+  val wordSizeBit = wordSize * 8 // 512 bit
+  val pgWord = pgSize / wordSize // 64 word per page
+  assert(pgSize % wordSize == 0)
 }
 
 case class WrapDedupCoreIO(conf: DedupConfig) extends Bundle {

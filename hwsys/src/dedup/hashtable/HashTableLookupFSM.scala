@@ -7,16 +7,6 @@ import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
 import util.StreamFork4
 
-// object HashTableOp extends SpinalEnum {
-//   val INSERT, LOOKUP, ERASE = newElement()
-// }
-
-// case class HashTabCmd (htConf: HashTableConfig) extends Bundle {
-//   val verb = HashTabVerb()
-//   val hashVal = Bits(htConf.hashValWidth bits)
-//   val isPostInst = Bool()
-// }
-
 case class HashTableLookupFSMInstr(htConf: HashTableConfig) extends Bundle{
   val SHA3Hash = Bits(htConf.hashValWidth bits)
   val opCode = DedupCoreOp()

@@ -17,7 +17,6 @@ import scala.util.Random
 
 class HashTableLookupFSMTests extends AnyFunSuite {
   def hashTableLookupFSMSim(): Unit = {
-
     val compiledRTL = if (sys.env.contains("VCS_HOME")) SimConfig.withVpdWave.withVCS.compile(new HashTableLookupFSMTB())
     else SimConfig.withWave.compile(new HashTableLookupFSMTB())
 

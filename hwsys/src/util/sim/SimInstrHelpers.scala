@@ -11,14 +11,6 @@ import dedup.DedupConfig
 object  SimInstrHelpers {
   val conf = DedupConfig()
   val instrBitWidth = DedupCoreOp().getBitsWidth
-
-  // def randInstrGen(instrIdx : Int, printRes : Boolean = false) : BigInt = instrIdx match{
-  //   case 0 => nopGen(printRes)
-  //   case 1 => writeInstrGen(1 + Random.nextInt(32).abs, 1 + Random.nextInt(32).abs, printRes)
-  //   case 2 => eraseInstrGen(1 + Random.nextInt(32).abs, 1 + Random.nextInt(32).abs, printRes)
-  //   case 3 => readInstrGen (1 + Random.nextInt(32).abs, 1 + Random.nextInt(32).abs, printRes)
-  //   case _ => readInstrGen (1 + Random.nextInt(32).abs, 1 + Random.nextInt(32).abs, printRes)
-  // }
   
   // generate 512 bit representation of instruction
   def nopGen(printRes : Boolean = false) : BigInt = {
