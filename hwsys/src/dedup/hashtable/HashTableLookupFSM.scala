@@ -5,19 +5,9 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
+import routingtable.RoutedLookupInstr
+import routingtable.RoutedWriteBackLookupRes
 import util.StreamFork4
-
-case class HashTableLookupFSMInstr(htConf: HashTableConfig) extends Bundle{
-  val SHA3Hash = Bits(htConf.hashValWidth bits)
-  val opCode = DedupCoreOp()
-}
-
-case class HashTableLookupFSMRes (htConf: HashTableConfig) extends Bundle {
-  val SHA3Hash = Bits(htConf.hashValWidth bits)
-  val RefCount = UInt(htConf.ptrWidth bits)
-  val SSDLBA   = UInt(htConf.ptrWidth bits)
-  val opCode   = DedupCoreOp()
-}
 
 case class HashTableBucketMetaData (htConf: HashTableConfig) extends Bundle {
   // Block Addr = entry idx
@@ -55,38 +45,16 @@ case class HashTableEntryNoPadding (htConf: HashTableConfig) extends Bundle {
   val next     = UInt(htConf.ptrWidth bits)
 }
 
-// case class DRAMRdCmd(htConf: HashTableConfig) extends Bundle {
-//   val addr   = UInt(config.addressWidth bits)
-//   val id     = UInt(config.idWidth bits)
-//   val len    = UInt(8 bits)
-//   val size   = UInt(3 bits)
-//   val burst  = Bits(2 bits)
-//   val addr = UInt(64 bits)
-//   val id
-//   val nEntry = UInt(htConf.bucketOffsWidth bits)
-//   io.axiMem.ar.addr := rDRAMRdCmd.memOffs + cntAxiRdCmd * burstLen * io.axiConf.dataWidth/8
-//   io.axiMem.ar.id   := 0
-//   io.axiMem.ar.len  := burstLen-1
-//   io.axiMem.ar.size := log2Up(io.axiConf.dataWidth/8)
-//   io.axiMem.ar.setBurstINCR()
-//   io.axiMem.ar.valid := False
-// }
-
-// case class DRAMWrCmd(htConf: HashTableConfig) extends Bundle {
-//   val memOffs = UInt(64 bits) // hash entry offset in DRAM
-//   val ptrVal = UInt(htConf.ptrWidth bits) // page pointer in storage
-//   val hashVal = Bits(htConf.hashValWidth bits)
-// }
-
 // size = #entry inside
 //hashTableOffset = global memory offset of the hash table
 // index -> entry0 -> entry1 -> ......
-
-case class HashTableLookupFSMIO(htConf: HashTableConfig) extends Bundle {
+case class HashTableLookupFSMIO(conf: DedupConfig) extends Bundle {
+  val htConf      = conf.htConf
   val initEn      = in Bool()
+  val nodeIdx     = in UInt(conf.nodeIdxWidth bits)
   // execution results
-  val instrStrmIn = slave Stream(HashTableLookupFSMInstr(htConf))
-  val res         = master Stream(HashTableLookupFSMRes(htConf))
+  val instrStrmIn = slave Stream(RoutedLookupInstr(conf))
+  val res         = master Stream(RoutedWriteBackLookupRes(conf))
   // interface the lock manager
   val lockReq     = master Stream(FSMLockRequest(htConf))
   // interface to allocator
@@ -97,11 +65,15 @@ case class HashTableLookupFSMIO(htConf: HashTableConfig) extends Bundle {
   val axiMem      = master(Axi4(axiConf))
 }
 
-case class HashTableLookupFSM (htConf: HashTableConfig, FSMId: Int = 0) extends Component {
+case class HashTableLookupFSM (conf: DedupConfig, FSMId: Int = 0) extends Component {
+  val htConf   = conf.htConf
+  val rFSMId   = Reg(UInt(log2Up(htConf.sizeFSMArray) bits)) init U(FSMId) allowUnsetRegToAvoidLatch
+  val rNodeIdx = Reg(UInt(conf.nodeIdxWidth bits)) init 0
+  when(io.initEn){
+    rNodeIdx := io.nodeIdx
+  }
 
-  val rFSMId = Reg(UInt(log2Up(htConf.sizeFSMArray) bits)) init U(FSMId) allowUnsetRegToAvoidLatch
-
-  val io = HashTableLookupFSMIO(htConf)
+  val io = HashTableLookupFSMIO(conf)
 
   /** default status of strems */
   io.instrStrmIn.setBlocked()
@@ -114,7 +86,7 @@ case class HashTableLookupFSM (htConf: HashTableConfig, FSMId: Int = 0) extends 
   io.axiMem.writeRsp.setBlocked()
   io.axiMem.readCmd.setIdle()
 
-  val instr      = Reg(HashTableLookupFSMInstr(htConf))
+  val instr      = Reg(RoutedLookupInstr(conf))
   val idxBucket  = instr.SHA3Hash(htConf.idxBucketWidth-1 downto 0).asUInt // lsb as the bucket index
   val bfLookupIdx = (htConf.bfEnable) generate (Vec(UInt(htConf.mWidth bits), htConf.k))
   val bfLookupMask = (htConf.bfEnable) generate (Vec(Bits(htConf.m bits), htConf.k))
@@ -165,11 +137,7 @@ case class HashTableLookupFSM (htConf: HashTableConfig, FSMId: Int = 0) extends 
     }
 
     FETCH_INSTRUCTION.whenIsActive {
-      // propagate pressure to previous stage
-      // make sure always able to fire result
-      // avoid deadlock in distributed case by
-      // avoid lock bucket unnecessarily
-      io.instrStrmIn.ready := io.res.ready 
+      io.instrStrmIn.ready := True
       io.res.setIdle()
       io.lockReq.setIdle()
       io.mallocIdx.setBlocked()
@@ -684,11 +652,14 @@ case class HashTableLookupFSM (htConf: HashTableConfig, FSMId: Int = 0) extends 
         lockReleased := True
       }
 
-      io.res.valid             := !resFired
-      io.res.payload.SHA3Hash  := currentEntry.SHA3Hash
-      io.res.payload.RefCount  := currentEntry.RefCount
-      io.res.payload.SSDLBA    := currentEntry.SSDLBA
-      io.res.payload.opCode    := instr.opCode
+      io.res.valid            := !resFired
+      // io.res.payload.SHA3Hash := currentEntry.SHA3Hash
+      // io.res.payload.opCode   := instr.opCode
+      io.res.payload.RefCount := currentEntry.RefCount
+      io.res.payload.SSDLBA   := currentEntry.SSDLBA
+      io.res.payload.nodeIdx  := rNodeIdx
+      io.res.payload.tag      := instr.tag
+      io.res.payload.dstNode  := instr.srcNode
       // acquire lock from lock manager
       when(io.res.fire){
         resFired := True

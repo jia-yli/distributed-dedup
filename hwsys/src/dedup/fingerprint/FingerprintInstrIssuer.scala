@@ -1,11 +1,12 @@
 package dedup
-package hashtable
+package fingerprint
 
 import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._
+import registerfile.UnregisteredLookupInstr
 
-case class HashTableInstrIssuer(conf: DedupConfig) extends Component{
+case class FingerprintInstrIssuer(conf: DedupConfig) extends Component{
 
   val instrBitWidth = DedupCoreOp().getBitsWidth
   val htConf = conf.htConf
@@ -18,7 +19,7 @@ case class HashTableInstrIssuer(conf: DedupConfig) extends Component{
     val SHA3ResStream      = slave Stream (Bits(conf.htConf.hashValWidth bits))
 
     /* output FSM instr stream */
-    val instrIssueStream = master Stream (HashTableLookupFSMInstr(conf.htConf))
+    val instrIssueStream = master Stream (UnregisteredLookupInstr(conf))
   }
 
   // initialization

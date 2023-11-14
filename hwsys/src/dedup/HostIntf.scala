@@ -19,6 +19,8 @@ class HostIntfIO(axiConf: Axi4Config) extends Bundle {
   val cnt = in UInt(64 bits)
   val pid = in UInt(6 bits)
   val rdDone, wrDone = out(Reg(UInt(32 bits))).init(0)
+  val hashStart = in UInt(32 bits)
+  val hashLen = in UInt(32 bits)
 
   // host IO
   val hostd = new HostDataIO
@@ -42,6 +44,8 @@ class HostIntfIO(axiConf: Axi4Config) extends Bundle {
     r.rwInPort(cnt,      r.getAddr(4), 0, "HostIntf: cnt")
     r.rwInPort(pid,      r.getAddr(5), 0, "HostIntf: pid")
     r.read(rdDone,      r.getAddr(6), 0, "HostIntf: rdDone")
+    r.read(wrDone,      r.getAddr(7), 0, "HostIntf: wrDone")
+    r.read(wrDone,      r.getAddr(7), 0, "HostIntf: wrDone")
     r.read(wrDone,      r.getAddr(7), 0, "HostIntf: wrDone")
     val assignOffs = 8
     assignOffs

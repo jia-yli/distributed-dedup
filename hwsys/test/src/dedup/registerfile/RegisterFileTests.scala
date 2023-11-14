@@ -14,9 +14,9 @@ import scala.collection.mutable.ListBuffer
 import scala.util.Random
 
 object RegisterFileSimHelpers {
-  val defaultConf = DedupConfig()
-  val conf = defaultConf.copy(rfConf = RegisterFileConfig(tagWidth = 6, // 16 entry
-                                                          nodeIdxWidth = 4))
+  val conf = DedupConfig(nodeIdxWidth = 4, 
+                         rfConf = RegisterFileConfig(tagWidth = 6)) // 16 entry
+
   val instrBitWidth = DedupCoreOp().getBitsWidth
 
   // Helpers
@@ -199,7 +199,7 @@ object RegisterFileSim {
                                                   RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth * 2 - 1, 
                                                   RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth)
       val resNodeIdx  = SimHelpers.bigIntTruncVal(res, 
-                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth * 2 + RegisterFileSimHelpers.conf.rfConf.nodeIdxWidth - 1, 
+                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth * 2 + RegisterFileSimHelpers.conf.nodeIdxWidth - 1, 
                                                   RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth * 2)
       val resOpCode   = SimHelpers.bigIntTruncVal(res, 
                                                   HashTableLookupRes(RegisterFileSimHelpers.conf).getBitsWidth - 1, 

@@ -1,4 +1,4 @@
-package dedup
+package dedup.fingerprint
 
 import spinal.core._
 import spinal.lib._
@@ -17,7 +17,7 @@ case class SHA3GroupIO(conf: SHA3Config) extends Bundle {
   val res      = master Stream (Bits(conf.resWidth bits))
 }
 
-class SHA3Group(sha3Conf : SHA3Config = SHA3Config()) extends Component { 
+case class SHA3Group(sha3Conf : SHA3Config = SHA3Config()) extends Component { 
   val io = SHA3GroupIO(sha3Conf)
 
   val sizeFastBufferGrp = 16
@@ -50,7 +50,7 @@ class SHA3Group(sha3Conf : SHA3Config = SHA3Config()) extends Component {
   slowBufferGrp.foreach(_.io.flush := io.initEn)
 
   /** SHA3 cores */
-  val sha3CoreGrp = Array.fill(sizeSlowBufferGrp)(new SHA3CoreWrap(SHA3_256))
+  val sha3CoreGrp = Array.fill(sizeSlowBufferGrp)(SHA3CoreWrap(SHA3_256))
 
   sha3CoreGrp.foreach(_.io.initEn := io.initEn)
   sha3CoreGrp.zipWithIndex.foreach { case (e, i) =>
@@ -122,7 +122,7 @@ case class SHA3CoreWrapIO(conf: SHA3Config) extends Bundle {
 
 }
 
-class SHA3CoreWrap(sha3Type: SHA3_Type) extends Component {
+case class SHA3CoreWrap(sha3Type: SHA3_Type) extends Component {
   val sha3CoreConf = SHA3Config(32, sha3Type)
   val io = SHA3CoreWrapIO(sha3CoreConf)
 

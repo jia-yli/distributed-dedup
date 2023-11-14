@@ -3,7 +3,7 @@ package pagewriter
 
 import spinal.core._
 import spinal.lib._
-import hashtable.HashTableLookupFSMRes
+import registerfile.HashTableLookupRes
 
 case class PageWriterInstrIssuer(conf: DedupConfig) extends Component{
 
@@ -15,7 +15,7 @@ case class PageWriterInstrIssuer(conf: DedupConfig) extends Component{
     /* input instr stream */
     val readyInstrStream   = slave Stream (DecodedReadyInstr(conf)) 
     val waitingInstrStream = slave Stream (DecodedWaitingInstr(conf))
-    val lookupResStream    = slave Stream (HashTableLookupFSMRes(conf.htConf))
+    val lookupResStream    = slave Stream (HashTableLookupRes(conf))
 
     /* output FSM instr stream */
     val instrIssueStream = master Stream (CombinedFullInstr(conf))
@@ -42,6 +42,7 @@ case class PageWriterInstrIssuer(conf: DedupConfig) extends Component{
     payload.SHA3Hash     := io.lookupResStream.payload.SHA3Hash
     payload.RefCount     := io.lookupResStream.payload.RefCount
     payload.SSDLBA       := io.lookupResStream.payload.SSDLBA
+    payload.nodeIdx      := io.lookupResStream.payload.nodeIdx
     payload.hostLBAStart := io.waitingInstrStream.hostLBAStart + slicingCounter
     payload.hostLBALen   := 1  // sliced
     payload.opCode       := io.lookupResStream.payload.opCode
@@ -93,6 +94,7 @@ case class PageWriterInstrIssuer(conf: DedupConfig) extends Component{
       io.instrIssueStream.payload.SHA3Hash     := 0
       io.instrIssueStream.payload.RefCount     := 0
       io.instrIssueStream.payload.SSDLBA       := io.readyInstrStream.SSDLBAStart
+      io.instrIssueStream.payload.nodeIdx      := 0
       io.instrIssueStream.payload.hostLBAStart := 0
       io.instrIssueStream.payload.hostLBALen   := io.readyInstrStream.SSDLBALen
       io.instrIssueStream.payload.opCode       := io.readyInstrStream.opCode

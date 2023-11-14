@@ -7,7 +7,6 @@ import spinal.lib._
 // instruction for local/remote hash table execution
 case class RegisteredLookupInstr(conf: DedupConfig) extends Bundle{
   val SHA3Hash = Bits(conf.htConf.hashValWidth bits)
-  // val routeInfo = UInt(conf.rfConf.nodeIdxWidth bits)
   val tag      = UInt(conf.rfConf.tagWidth bits)
   val opCode   = DedupCoreOp()
 }
@@ -19,7 +18,6 @@ case class UnregisteredLookupInstr(conf: DedupConfig) extends Bundle{
 
 case class rfInstrEntry(conf: DedupConfig) extends Bundle{
   val SHA3Hash = Bits(conf.htConf.hashValWidth bits)
-  // val routeInfo = UInt(conf.rfConf.nodeIdxWidth bits)
   val opCode   = DedupCoreOp()
 }
 
@@ -27,7 +25,7 @@ case class rfInstrEntry(conf: DedupConfig) extends Bundle{
 case class WriteBackLookupRes (conf: DedupConfig) extends Bundle {
   val RefCount = UInt(conf.htConf.ptrWidth bits)
   val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
-  val nodeIdx  = UInt(conf.rfConf.nodeIdxWidth bits)
+  val nodeIdx  = UInt(conf.nodeIdxWidth bits)
   val tag      = UInt(conf.rfConf.tagWidth bits)
 }
 
@@ -35,20 +33,19 @@ case class HashTableLookupRes (conf: DedupConfig) extends Bundle {
   val SHA3Hash = Bits(conf.htConf.hashValWidth bits)
   val RefCount = UInt(conf.htConf.ptrWidth bits)
   val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
-  val nodeIdx  = UInt(conf.rfConf.nodeIdxWidth bits)
+  val nodeIdx  = UInt(conf.nodeIdxWidth bits)
   val opCode   = DedupCoreOp()
 }
 
 case class rfResEntry (conf: DedupConfig) extends Bundle {
   val RefCount = UInt(conf.htConf.ptrWidth bits)
   val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
-  val nodeIdx  = UInt(conf.rfConf.nodeIdxWidth bits)
+  val nodeIdx  = UInt(conf.nodeIdxWidth bits)
 }
 
 // OoO support for RDMA
 case class RegisterFileConfig(
   tagWidth: Int = 8,      // 256 regs in register file
-  nodeIdxWidth: Int = 4   // up to 16 nodes
 )
 
 case class RegisterFile(conf: DedupConfig) extends Component {
