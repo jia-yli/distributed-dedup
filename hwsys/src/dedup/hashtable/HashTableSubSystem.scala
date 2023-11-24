@@ -49,6 +49,8 @@ case class HashTableConfig (hashValWidth: Int = 256,
 case class HashTableSSIO(conf: DedupConfig) extends Bundle {
   val initEn       = in Bool () 
   val clearInitStatus = in Bool()
+  val updateRoutingTableContent = in Bool()
+  val nodeIdx      = in UInt(conf.nodeIdxWidth bits)
   val initDone     = out Bool ()
   val opStrmIn     = slave Stream (RoutedLookupInstr(conf))
   val res          = master Stream (RoutedWriteBackLookupRes(conf))
@@ -74,6 +76,8 @@ case class HashTableSubSystem(conf : DedupConfig) extends Component {
   lookupEngine.io.initEn             := io.initEn
   lookupEngine.io.clearInitStatus    := io.clearInitStatus
   lookupEngine.io.res                >> io.res
+  lookupEngine.io.updateRoutingTableContent := io.updateRoutingTableContent
+  lookupEngine.io.nodeIdx            := io.nodeIdx
   // io.axiMem                          := lookupEngine.io.axiMem
   for (idx <- 0 until htConf.sizeFSMArray){
     lookupEngine.io.axiMem(idx) >> io.axiMem(idx)

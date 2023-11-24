@@ -6,6 +6,9 @@ import org.scalatest.funsuite.AnyFunSuite
 import spinal.core.sim._
 import util.sim._
 import util.sim.SimDriver._
+import routingtable.RoutedLookupInstr
+import routingtable.RoutedWriteBackLookupRes
+import registerfile.RegisterFileConfig
 
 import spinal.core._
 import spinal.lib._
@@ -30,17 +33,22 @@ class HashTableLookupFSMTests extends AnyFunSuite {
   }
 }
 
-case class execRes(SHA3Hash: BigInt, RefCount: BigInt, SSDLBA: BigInt, opCode: BigInt)
+case class ExecRes(val RefCount : BigInt,
+                   val SSDLBA   : BigInt,
+                   val nodeIdx  : BigInt,
+                   val tag      : BigInt,
+                   val dstNode  : BigInt)
 
 object HashTableFSMTBSim {
 
   def doSim(dut: HashTableLookupFSMTB, verbose: Boolean = false): Unit = {
     // val randomWithSeed = new Random(1006045258)
     val randomWithSeed = new Random()
+    val simNodeIdx = 5
     dut.clockDomain.forkStimulus(period = 2)
     SimTimeout(1000000)
     dut.io.initEn            #= false 
-    dut.io.clearInitStatus   #= false
+    dut.io.nodeIdx           #= simNodeIdx
     dut.io.instrStrmIn.valid #= false
     dut.io.res.ready         #= false
     dut.io.mallocIdx.valid   #= false
@@ -58,13 +66,14 @@ object HashTableFSMTBSim {
     dut.clockDomain.waitSamplingWhere(dut.io.initDone.toBoolean)
 
     /** generate page stream */
-    val htConf = HashTableLookupHelpers.htConf
-    val numBucketUsed = 16
+    val conf = HashTableLookupHelpers.conf
+    val numBucketUsed = 8
     val bucketAvgLen = 8
     val numUniqueSHA3 = numBucketUsed * bucketAvgLen
 
-    val uniqueSHA3refCount = 2
-    val bucketMask = ((BigInt(1) << (log2Up(htConf.nBucket) - log2Up(numBucketUsed)) - 1) << log2Up(numBucketUsed))
+    val uniqueSHA3refCount = 16
+    assert(numBucketUsed <= conf.htConf.nBucket)
+    val bucketMask = ((BigInt(1) << (log2Up(conf.htConf.nBucket) - log2Up(numBucketUsed))) - 1) << log2Up(numBucketUsed)
     val uniqueSHA3 = List.fill[BigInt](numUniqueSHA3)(BigInt(256, randomWithSeed) &~ bucketMask)
 
 
@@ -72,7 +81,7 @@ object HashTableFSMTBSim {
     val goldenHashTableRefCountLayout = ListBuffer.fill[BigInt](numUniqueSHA3)(0)
     val goldenHashTableSSDLBALayout = ListBuffer.fill[BigInt](numUniqueSHA3)(0)
 
-    val goldenResponse: ListBuffer[execRes] = ListBuffer()
+    val goldenResponse: ListBuffer[ExecRes] = ListBuffer()
     val instrStrmData: ListBuffer[BigInt] = ListBuffer()
 
     // op gen
@@ -84,16 +93,22 @@ object HashTableFSMTBSim {
     // var pgStrmData: ListBuffer[BigInt] = ListBuffer()
 
     // 1,...,N, 1,...,N
-    for (i <- 0 until uniqueSHA3refCount) {
-      for (j <- 0 until numUniqueSHA3) {
-        instrStrmData.append(HashTableLookupHelpers.insertInstrGen(uniqueSHA3(j)))
+    for (j <- 0 until numUniqueSHA3) {
+      for (i <- 0 until uniqueSHA3refCount) {
+        val randTag = randomWithSeed.nextInt(1024)
+        val randSrcNode = randomWithSeed.nextInt(1024)
+        instrStrmData.append(HashTableLookupHelpers.instrGen(sha3 = uniqueSHA3(j), tag = randTag, opCode = 1, srcNode = randSrcNode))
         val isNew = (goldenHashTableRefCountLayout(j) == 0)
         goldenHashTableRefCountLayout.update(j, goldenHashTableRefCountLayout(j) + 1)
         if (isNew) {
           goldenHashTableSSDLBALayout.update(j, pseudoAllocator)
           pseudoAllocator = pseudoAllocator + 1
         }
-        goldenResponse.append(execRes(uniqueSHA3(j),goldenHashTableRefCountLayout(j),goldenHashTableSSDLBALayout(j),1))
+        goldenResponse.append(ExecRes(RefCount = goldenHashTableRefCountLayout(j),
+                                      SSDLBA   = goldenHashTableSSDLBALayout(j),
+                                      nodeIdx  = simNodeIdx,
+                                      tag      = randTag,
+                                      dstNode  = randSrcNode))
       }
     }
     
@@ -131,7 +146,7 @@ object HashTableFSMTBSim {
     /* pseudo malloc*/
     val pseudoMallocIdxPush = fork {
       for (newBlkIdx <- 0 until numUniqueSHA3) {
-        dut.io.mallocIdx.sendData(dut.clockDomain, BigInt(newBlkIdx+1))
+        dut.io.mallocIdx.sendData(dut.clockDomain, BigInt(newBlkIdx + 1))
       }
     }
 
@@ -152,7 +167,7 @@ object HashTableFSMTBSim {
     resWatch.join()
 
     // Test part 1.5: read all
-    val goldenResponse1p5: ListBuffer[execRes] = ListBuffer()
+    val goldenResponse1p5: ListBuffer[ExecRes] = ListBuffer()
     val instrStrmData1p5: ListBuffer[BigInt] = ListBuffer()
 
     // var pgStrmData: ListBuffer[BigInt] = ListBuffer()
@@ -160,8 +175,14 @@ object HashTableFSMTBSim {
     // 1,...,N, 1,...,N
     for (i <- 0 until uniqueSHA3refCount) {
       for (j <- 0 until numUniqueSHA3) {
-        instrStrmData1p5.append(HashTableLookupHelpers.readInstrGen(uniqueSHA3(j)))
-        goldenResponse1p5.append(execRes(uniqueSHA3(j),goldenHashTableRefCountLayout(j),goldenHashTableSSDLBALayout(j),3))
+        val randTag = randomWithSeed.nextInt(1024)
+        val randSrcNode = randomWithSeed.nextInt(1024)
+        instrStrmData1p5.append(HashTableLookupHelpers.instrGen(sha3 = uniqueSHA3(j), tag = randTag, opCode = 3, srcNode = randSrcNode))
+        goldenResponse1p5.append(ExecRes(RefCount = goldenHashTableRefCountLayout(j),
+                                         SSDLBA   = goldenHashTableSSDLBALayout(j),
+                                         nodeIdx  = simNodeIdx,
+                                         tag      = randTag,
+                                         dstNode  = randSrcNode))
       }
     }
 
@@ -188,7 +209,7 @@ object HashTableFSMTBSim {
     resWatch1p5.join()
 
     // Test part 2: delete all
-    val goldenResponse2: ListBuffer[execRes] = ListBuffer()
+    val goldenResponse2: ListBuffer[ExecRes] = ListBuffer()
     val instrStrmData2: ListBuffer[BigInt] = ListBuffer()
     val goldenFreeIdx2: ListBuffer[BigInt] = ListBuffer()
 
@@ -197,13 +218,19 @@ object HashTableFSMTBSim {
     // 1,...,N, 1,...,N
     for (i <- 0 until uniqueSHA3refCount) {
       for (j <- 0 until numUniqueSHA3) {
-        instrStrmData2.append(HashTableLookupHelpers.eraseInstrGen(uniqueSHA3(j)))
+        val randTag = randomWithSeed.nextInt(1024)
+        val randSrcNode = randomWithSeed.nextInt(1024)
+        instrStrmData2.append(HashTableLookupHelpers.instrGen(sha3 = uniqueSHA3(j), tag = randTag, opCode = 2, srcNode = randSrcNode))
         val isGC = (goldenHashTableRefCountLayout(j) == 1)
         goldenHashTableRefCountLayout.update(j, goldenHashTableRefCountLayout(j) - 1)
         if (isGC) {
           goldenFreeIdx2.append(goldenHashTableSSDLBALayout(j))
         }
-        goldenResponse2.append(execRes(uniqueSHA3(j),goldenHashTableRefCountLayout(j),goldenHashTableSSDLBALayout(j),2))
+        goldenResponse2.append(ExecRes(RefCount = goldenHashTableRefCountLayout(j),
+                                       SSDLBA   = goldenHashTableSSDLBALayout(j),
+                                       nodeIdx  = simNodeIdx,
+                                       tag      = randTag,
+                                       dstNode  = randSrcNode))
       }
     }
 
@@ -274,83 +301,107 @@ object HashTableFSMTBSim {
 }
 
 object HashTableLookupHelpers{
-  val htConf = HashTableConfig (hashValWidth = 256, 
-                                ptrWidth = 32, 
-                                hashTableSize = 1024*8, 
-                                expBucketSize = 128, 
-                                hashTableOffset = (BigInt(1) << 30), 
-                                bfEnable = true,
-                                bfOptimizedReconstruct = true,
-                                sizeFSMArray = 6)
-  // val htConf = DedupConfig().htConf
+  val conf = DedupConfig(nodeIdxWidth = 32,
+                         rfConf = RegisterFileConfig(tagWidth = 32),
+                         htConf = HashTableConfig (hashValWidth = 256, 
+                                                   ptrWidth = 32, 
+                                                   hashTableSize = 128 * 64, 
+                                                   expBucketSize = 128, 
+                                                   hashTableOffset = (BigInt(1) << 30), 
+                                                   bfEnable = true,
+                                                   bfOptimizedReconstruct = false,
+                                                   sizeFSMArray = 6))
 
-  def insertInstrGen(SHA3 : BigInt) : BigInt = {
-    val sha3_trunc = SimHelpers.bigIntTruncVal(SHA3, 255, 0)
-    val opCode = BigInt(1)
+  /**
+    * Opcode: NOP 0, WRITE2FREE 1, ERASEREF 2, READSSD 3
+    *
+    * @param sha3
+    * @param tag
+    * @param opCode
+    * @param srcNode
+    * @return
+    */
+  def instrGen(sha3 : BigInt, tag : BigInt, opCode : BigInt, srcNode : BigInt) : BigInt = {
+    val sha3_trunc    = SimHelpers.bigIntTruncVal(sha3, conf.htConf.hashValWidth - 1, 0)
+    val tag_trunc     = SimHelpers.bigIntTruncVal(tag, conf.rfConf.tagWidth - 1, 0)
+    val opCode_trunc  = SimHelpers.bigIntTruncVal(opCode, DedupCoreOp().getBitsWidth - 1, 0)
+    val srcNode_trunc = SimHelpers.bigIntTruncVal(srcNode, conf.nodeIdxWidth - 1, 0)
 
-    var lookupInstr = BigInt(0)
-    lookupInstr = lookupInstr + (opCode << (HashTableLookupFSMInstr(htConf).getBitsWidth - DedupCoreOp().getBitsWidth))
-    lookupInstr = lookupInstr + (sha3_trunc << 0)
-    lookupInstr
-  }
-
-  def eraseInstrGen(SHA3 : BigInt) : BigInt = {
-    val sha3_trunc = SimHelpers.bigIntTruncVal(SHA3, 255, 0)
-    val opCode = BigInt(2)
-
-    var lookupInstr = BigInt(0)
-    lookupInstr = lookupInstr + (opCode << (HashTableLookupFSMInstr(htConf).getBitsWidth - DedupCoreOp().getBitsWidth))
-    lookupInstr = lookupInstr + (sha3_trunc << 0)
-    lookupInstr
-  }
-
-  def readInstrGen(SHA3 : BigInt) : BigInt = {
-    val sha3_trunc = SimHelpers.bigIntTruncVal(SHA3, 255, 0)
-    val opCode = BigInt(3)
+    assert (sha3_trunc    == sha3, "sha3 too wide")
+    assert (tag_trunc     == tag , "tag too wide")
+    assert (opCode_trunc  == opCode , "opCode too wide")
+    assert (srcNode_trunc == srcNode, "srcNode too wide")
 
     var lookupInstr = BigInt(0)
-    lookupInstr = lookupInstr + (opCode << (HashTableLookupFSMInstr(htConf).getBitsWidth - DedupCoreOp().getBitsWidth))
-    lookupInstr = lookupInstr + (sha3_trunc << 0)
+    val bitOffset = SimHelpers.BitOffset()
+
+    bitOffset.next(conf.htConf.hashValWidth)
+    lookupInstr = lookupInstr + (sha3_trunc << bitOffset.low)
+
+    bitOffset.next(conf.rfConf.tagWidth)
+    lookupInstr = lookupInstr + (tag_trunc << bitOffset.low)
+
+    bitOffset.next(DedupCoreOp().getBitsWidth)
+    lookupInstr = lookupInstr + (opCode_trunc << bitOffset.low)
+
+    bitOffset.next(conf.nodeIdxWidth)
+    lookupInstr = lookupInstr + (srcNode_trunc << bitOffset.low)    
+
     lookupInstr
   }
 
   // decodeinstruction from output results
-  def decodeRes(respData:BigInt, printRes : Boolean = false) : execRes = {
-    val SHA3Hash = SimHelpers.bigIntTruncVal(respData, htConf.hashValWidth - 1, 0)
-    val RefCount = SimHelpers.bigIntTruncVal(respData, htConf.hashValWidth + htConf.ptrWidth - 1, htConf.hashValWidth)
-    val SSDLBA   = SimHelpers.bigIntTruncVal(respData, htConf.hashValWidth + 2 * htConf.ptrWidth - 1, htConf.hashValWidth + htConf.ptrWidth)
-    val opCode   = SimHelpers.bigIntTruncVal(respData, HashTableLookupFSMRes(htConf).getBitsWidth, htConf.hashValWidth + 2 * htConf.ptrWidth)
-    execRes(SHA3Hash, RefCount, SSDLBA, opCode)
+  def decodeRes(respData:BigInt, printRes : Boolean = false) : ExecRes = {
+    val bitOffset = SimHelpers.BitOffset()
+
+    bitOffset.next(conf.htConf.ptrWidth)
+    val RefCount = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.htConf.ptrWidth)
+    val SSDLBA   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.nodeIdxWidth)
+    val nodeIdx  = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.rfConf.tagWidth)
+    val tag      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.nodeIdxWidth)
+    val dstNode  = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+
+    ExecRes(RefCount = RefCount,
+            SSDLBA   = SSDLBA  ,
+            nodeIdx  = nodeIdx ,
+            tag      = tag     ,
+            dstNode  = dstNode )
   }
 }
 
 case class HashTableLookupFSMTB() extends Component{
 
-  val htConf = HashTableLookupHelpers.htConf
+  val conf = HashTableLookupHelpers.conf
 
   val io = new Bundle {
     val initEn      = in Bool()
-    val clearInitStatus = in Bool()
+    val nodeIdx     = in UInt(conf.nodeIdxWidth bits)
     val initDone    = out Bool()
     // execution results
-    val instrStrmIn = slave Stream(HashTableLookupFSMInstr(htConf))
-    val res         = master Stream(HashTableLookupFSMRes(htConf))
+    val instrStrmIn = slave Stream(RoutedLookupInstr(conf))
+    val res         = master Stream(RoutedWriteBackLookupRes(conf))
     // interface to allocator
-    val mallocIdx   = slave Stream(UInt(htConf.ptrWidth bits))
-    val freeIdx     = master Stream(UInt(htConf.ptrWidth bits))
+    val mallocIdx   = slave Stream(UInt(conf.htConf.ptrWidth bits))
+    val freeIdx     = master Stream(UInt(conf.htConf.ptrWidth bits))
 
     /** DRAM interface */
     val axiConf     = Axi4ConfigAlveo.u55cHBM
     val axiMem      = master(Axi4(axiConf))
   }
 
-  val memInitializer = HashTableMemInitializer(htConf)
+  val memInitializer = HashTableMemInitializer(conf.htConf)
 
-  val lookupFSM = HashTableLookupFSM(htConf)
+  val lookupFSM = HashTableLookupFSM(conf)
   
-  memInitializer.io.initEn := io.initEn
-  memInitializer.io.clearInitStatus := io.clearInitStatus
-  lookupFSM.io.initEn      := io.initEn
+  memInitializer.io.initEn               := io.initEn
+  memInitializer.io.clearInitStatus      := False
+  lookupFSM.io.initEn                    := io.initEn
+  lookupFSM.io.updateRoutingTableContent := io.initEn
+  lookupFSM.io.nodeIdx                   := io.nodeIdx
 
   val isMemInitDone = memInitializer.io.initDone
   io.initDone := isMemInitDone

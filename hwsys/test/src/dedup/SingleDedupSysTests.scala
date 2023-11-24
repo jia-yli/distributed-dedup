@@ -6,6 +6,7 @@ import spinal.lib.bus.amba4.axi._
 
 import spinal.lib.bus.amba4.axilite._
 import coyote.HostDataIO
+import coyote.NetworkDataIO
 
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.core.sim._
@@ -17,26 +18,26 @@ import scala.collection.mutable
 import scala.collection.mutable._
 import scala.util.Random
 
-class DedupSysFuncTests extends AnyFunSuite {
-  def dedupSysFuncSim(): Unit = {
+class SingleDedupSysTests extends AnyFunSuite {
+  def singleDedupSysSim(): Unit = {
 
-    val compiledRTL = if (sys.env.contains("VCS_HOME")) SimConfig.withVpdWave.withVCS.compile(new WrapDedupSysTB())
-    else SimConfig.withWave.compile(new WrapDedupSysTB())
+    val compiledRTL = if (sys.env.contains("VCS_HOME")) SimConfig.withVpdWave.withVCS.compile(new SingleDedupSysTB())
+    else SimConfig.withWave.compile(new SingleDedupSysTB())
 
     compiledRTL.doSim { dut =>
-      DedupSysFuncSim.doSim(dut)
+      SingleDedupSysSim.doSim(dut)
     }
   }
 
-  test("Sys Func Test"){
-    dedupSysFuncSim()
+  test("Single DedupSys Test"){
+    singleDedupSysSim()
   }
 }
 
 
-object DedupSysFuncSim {
+object SingleDedupSysSim {
 
-  def doSim(dut: WrapDedupSysTB, verbose: Boolean = false): Unit = {
+  def doSim(dut: SingleDedupSysTB, verbose: Boolean = false): Unit = {
     dut.clockDomain.forkStimulus(period = 2)
     SimTimeout(1000000)
     /** init */
@@ -47,6 +48,8 @@ object DedupSysFuncSim {
     dut.io.hostd.axis_host_src.ready  #= false
     dut.io.hostd.bpss_wr_req.ready    #= false
     dut.io.hostd.bpss_rd_req.ready    #= false
+    dut.io.networkIo.remoteRecvStrmIn.valid  #= false
+    dut.io.networkIo.remoteSendStrmOut.ready #= false
 
     /** memory model for HashTab */
     SimDriver.instAxiMemSim(dut.io.axi_mem, dut.clockDomain, None)
@@ -70,7 +73,7 @@ object DedupSysFuncSim {
     
     val opStrmData: ListBuffer[BigInt] = ListBuffer()
     for (i <- 0 until opNum) {
-      val newInstr = SimInstrHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp)
+      val newInstr = DedupCoreSimHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp)
       opStrmData.append(newInstr)
     }
 
@@ -85,9 +88,17 @@ object DedupSysFuncSim {
       }
     }
 
-    val goldenPgIsNew    = List.tabulate[BigInt](pageNum){idx => if (idx < uniquePageNum) 1 else 0}
-    val goldenpgRefCount = List.tabulate[BigInt](pageNum){idx => (idx/(uniquePageNum)) + 1}
-    val goldenPgIdx      = List.tabulate[BigInt](pageNum){idx => ((idx/pagePerOp)) * pagePerOp + idx} // start + idx
+    val goldenPgRefCountAppeared = ListBuffer.tabulate[ListBuffer[Boolean]](uniquePageNum){idx => 
+      ListBuffer.tabulate[Boolean](dupFacotr){idx => 
+        false
+      }
+    }
+    val goldenPgRefCountAppeared2 = ListBuffer.tabulate[ListBuffer[Boolean]](uniquePageNum){idx => 
+      ListBuffer.tabulate[Boolean](dupFacotr){idx => 
+        false
+      }
+    }
+    val goldenPgIdx = List.tabulate[BigInt](pageNum){idx => ((idx/pagePerOp)) * pagePerOp + idx} // start + idx
 
     // random shuffle
     // var initialPgOrder: List[Int] = List()
@@ -127,7 +138,7 @@ object DedupSysFuncSim {
       }
     }
     for (padIdx <- 0 until inputBufferPaddingLen){
-      dedupSysInputData.enqueue(SimInstrHelpers.nopGen())
+      dedupSysInputData.enqueue(DedupCoreSimHelpers.nopGen())
     }
     
     val pgRespQ: mutable.Queue[BigInt] = mutable.Queue()
@@ -143,7 +154,17 @@ object DedupSysFuncSim {
     setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 5<<3, 4096) // LEN
     setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 6<<3, inputBufferTotalLen/64) // CNT = pageNum
     setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 7<<3, 0) // PID
-    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 10<<3, 8) // factorThrou
+    // init routing table
+    val simNodeIdx = 3
+    val conf = DedupCoreSimHelpers.singleCoreConf
+    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 11 << 3, 1) // active channel count
+    for (index <- 0 until conf.rtConf.routingChannelCount){
+      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (12 + 3 * index) << 3, {if (index == 0) simNodeIdx else (simNodeIdx + 1)}) // node
+      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (13 + 3 * index) << 3, 0) // start
+      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (14 + 3 * index) << 3, {if (index == 0) (1 << conf.rtConf.routingDecisionBits) else 0}) // len
+    }
+    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 10 << 3, 1)
+    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (8 + 4 + 3 * conf.rtConf.routingChannelCount) << 3, 8) // factorThrou
 
     // confirm initDone
     while(readAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 1<<3) == 0) {
@@ -171,25 +192,43 @@ object DedupSysFuncSim {
 
     var respIdx = 0
     while(pgRespQ.nonEmpty) {
-      val respData     = pgRespQ.dequeue()
-      val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, 255, 0)
-      val RefCount     = SimHelpers.bigIntTruncVal(respData, 287, 256)
-      val SSDLBA       = SimHelpers.bigIntTruncVal(respData, 319, 288)
-      val hostLBAStart = SimHelpers.bigIntTruncVal(respData, 351, 320)
-      val hostLBALen   = SimHelpers.bigIntTruncVal(respData, 383, 352)
-      val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
-      val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
+      val respData = pgRespQ.dequeue()
+      val sha3Hash = DedupCoreSimHelpers.singleDedupSysDecodeAndCheck(respData = respData,
+                                                                      uniquePageIdx = respIdx % uniquePageNum,
+                                                                      goldenPgRefCountAppeared = goldenPgRefCountAppeared2,
+                                                                      goldenNodeIdx = simNodeIdx,
+                                                                      goldenPgIdx =  goldenPgIdx(respIdx),
+                                                                      goldenOpCode = 1,
+                                                                      checkSha3 = false,
+                                                                      goldenSha3  = 0)
+
+      // val bitOffset = SimHelpers.BitOffset()
+      // bitOffset.next(conf.htConf.hashValWidth)
+      // val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      // bitOffset.next(conf.htConf.ptrWidth)
+      // val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      // bitOffset.next(conf.htConf.ptrWidth)
+      // val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      // bitOffset.next(conf.nodeIdxWidth)
+      // val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      // bitOffset.next(conf.htConf.ptrWidth)
+      // val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      // bitOffset.next(conf.htConf.ptrWidth)
+      // val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      // val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
+      // val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
       
-      assert(RefCount == goldenpgRefCount(respIdx))
-      assert(hostLBAStart == goldenPgIdx(respIdx))
-      assert(hostLBALen == 1)
-      assert(isExec == goldenPgIsNew(respIdx))
-      assert(opCode == 1)
+      // assert(RefCount == goldenpgRefCount(respIdx))
+      // assert(hostLBAStart == goldenPgIdx(respIdx))
+      // assert(hostLBALen == 1)
+      // assert(isExec == goldenPgIsNew(respIdx))
+      // assert(opCode == 1)
       if (respIdx < uniquePageNum){
-        dedupSysInputData1p5.enqueue(SimInstrHelpers.readInstrGen(SHA3Hash))
-        dedupSysInputData2.enqueue(SimInstrHelpers.eraseInstrGen(SHA3Hash))
-        uniquePageSha3.append(SHA3Hash)
+        dedupSysInputData1p5.enqueue(DedupCoreSimHelpers.readInstrGen(sha3Hash))
+        uniquePageSha3.append(sha3Hash)
       }
+
+      dedupSysInputData2.enqueue(DedupCoreSimHelpers.eraseInstrGen(sha3Hash))
 
       // println(s"pageIdx: ${respIdx}")
       // println(s"${RefCount} == ${goldenpgRefCount(respIdx)}")
@@ -208,7 +247,7 @@ object DedupSysFuncSim {
     val inputBufferTotalLen1p5  = ((inputBufferUsefulLen1p5 + 63)/ 64)*64
     val inputBufferPaddingLen1p5 = inputBufferTotalLen1p5 - inputBufferUsefulLen1p5
     for (opIdx <- 0 until inputBufferPaddingLen1p5){
-      dedupSysInputData1p5.enqueue(SimInstrHelpers.nopGen())
+      dedupSysInputData1p5.enqueue(DedupCoreSimHelpers.nopGen())
     }
     
     val pgRespQ1p5: mutable.Queue[BigInt] = mutable.Queue()
@@ -236,16 +275,25 @@ object DedupSysFuncSim {
     var respIdx1p5 = 0
     while(pgRespQ1p5.nonEmpty) {
       val respData     = pgRespQ1p5.dequeue()
-      val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, 255, 0)
-      val RefCount     = SimHelpers.bigIntTruncVal(respData, 287, 256)
-      val SSDLBA       = SimHelpers.bigIntTruncVal(respData, 319, 288)
-      val hostLBAStart = SimHelpers.bigIntTruncVal(respData, 351, 320)
-      val hostLBALen   = SimHelpers.bigIntTruncVal(respData, 383, 352)
+      val bitOffset = SimHelpers.BitOffset()
+      bitOffset.next(conf.htConf.hashValWidth)
+      val sha3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      bitOffset.next(conf.htConf.ptrWidth)
+      val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      bitOffset.next(conf.htConf.ptrWidth)
+      val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      bitOffset.next(conf.nodeIdxWidth)
+      val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      bitOffset.next(conf.htConf.ptrWidth)
+      val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      bitOffset.next(conf.htConf.ptrWidth)
+      val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
       val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
       
-      assert(SHA3Hash == uniquePageSha3(respIdx1p5))
+      assert(sha3Hash == uniquePageSha3(respIdx1p5))
       assert(RefCount == dupFacotr)
+      assert(nodeIdx == simNodeIdx)
       assert(hostLBAStart == 0)
       assert(hostLBALen == 1)
       assert(isExec == 1)
@@ -264,16 +312,16 @@ object DedupSysFuncSim {
 
     // erase all
     println("clean all")
-    val inputBufferUsefulLen2 = uniquePageNum
+    val inputBufferUsefulLen2 = pageNum
     val inputBufferTotalLen2  = ((inputBufferUsefulLen2 + 63)/ 64)*64
     val inputBufferPaddingLen2 = inputBufferTotalLen2 - inputBufferUsefulLen2
     for (opIdx <- 0 until inputBufferPaddingLen2){
-      dedupSysInputData2.enqueue(SimInstrHelpers.nopGen())
+      dedupSysInputData2.enqueue(DedupCoreSimHelpers.nopGen())
     }
     
     val pgRespQ2: mutable.Queue[BigInt] = mutable.Queue()
     println(s"clean data len = ${dedupSysInputData2.length} words")
-    hostModel(dut.clockDomain, dut.io.hostd, dedupSysInputData2, pgRespQ2, uniquePageNum)
+    hostModel(dut.clockDomain, dut.io.hostd, dedupSysInputData2, pgRespQ2, pageNum)
     // for (opIdx <- 0 until inputBufferTotalLen2){
     //   dedupSysInputData.enqueue(dedupSysInputData.dequeue())
     // }
@@ -285,7 +333,7 @@ object DedupSysFuncSim {
       dut.clockDomain.waitSampling(10)
     }
     // wait for tail pages processing
-    while (readAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 9 << 3) < uniquePageNum/16) {
+    while (readAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 9 << 3) < pageNum/16) {
       dut.clockDomain.waitSampling(100)
     }
 
@@ -295,21 +343,29 @@ object DedupSysFuncSim {
 
     var respIdx2 = 0
     while(pgRespQ2.nonEmpty) {
-      val respData     = pgRespQ2.dequeue()
-      val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, 255, 0)
-      val RefCount     = SimHelpers.bigIntTruncVal(respData, 287, 256)
-      val SSDLBA       = SimHelpers.bigIntTruncVal(respData, 319, 288)
-      val hostLBAStart = SimHelpers.bigIntTruncVal(respData, 351, 320)
-      val hostLBALen   = SimHelpers.bigIntTruncVal(respData, 383, 352)
-      val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
-      val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
+      val respData = pgRespQ2.dequeue()
+      val sha3Hash = DedupCoreSimHelpers.singleDedupSysDecodeAndCheck(respData = respData,
+                                                                      uniquePageIdx = respIdx2 % uniquePageNum,
+                                                                      goldenPgRefCountAppeared = goldenPgRefCountAppeared2,
+                                                                      goldenNodeIdx = simNodeIdx,
+                                                                      goldenPgIdx = 0,
+                                                                      goldenOpCode = 2,
+                                                                      checkSha3 = true,
+                                                                      goldenSha3 = uniquePageSha3(respIdx2 % uniquePageNum))
+      // val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, 255, 0)
+      // val RefCount     = SimHelpers.bigIntTruncVal(respData, 287, 256)
+      // val SSDLBA       = SimHelpers.bigIntTruncVal(respData, 319, 288)
+      // val hostLBAStart = SimHelpers.bigIntTruncVal(respData, 351, 320)
+      // val hostLBALen   = SimHelpers.bigIntTruncVal(respData, 383, 352)
+      // val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
+      // val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
       
-      assert(SHA3Hash == uniquePageSha3(respIdx2))
-      assert(RefCount == dupFacotr - 1)
-      assert(hostLBAStart == 0)
-      assert(hostLBALen == 1)
-      assert(isExec == { if (dupFacotr == 1) 1 else 0})
-      assert(opCode == 2)
+      // assert(SHA3Hash == uniquePageSha3(respIdx2))
+      // assert(RefCount == dupFacotr - 1)
+      // assert(hostLBAStart == 0)
+      // assert(hostLBALen == 1)
+      // assert(isExec == { if (dupFacotr == 1) 1 else 0})
+      // assert(opCode == 2)
 
       // println(s"pageIdx: ${respIdx2}")
       // println(s"${RefCount} == ${goldenpgRefCount(respIdx2)}")
@@ -319,26 +375,28 @@ object DedupSysFuncSim {
       // println(s"${opCode} == 0")
       respIdx2 = respIdx2 + 1
     }
-    assert(respIdx2 == uniquePageNum)
+    assert(respIdx2 == pageNum)
     assert(pgRespQ2.isEmpty, "Ah???")
   }
 }
 
-case class WrapDedupSysTB() extends Component{
+case class SingleDedupSysTB() extends Component{
 
-  val conf = DedupConfig()
+  val conf = DedupCoreSimHelpers.singleCoreConf
 
   val io = new Bundle {
     val axi_ctrl = slave(AxiLite4(AxiLite4Config(64, 64)))
     val hostd = new HostDataIO
+    val networkIo = new NetworkDataIO
     val axi_mem = master(Axi4(Axi4ConfigAlveo.u55cHBM))
   }
 
   val dedupSys = new WrapDedupSys()
 
   // auto connect
-  dedupSys.io.axi_ctrl <> io.axi_ctrl
-  dedupSys.io.hostd    <> io.hostd
+  dedupSys.io.axi_ctrl  <> io.axi_ctrl
+  dedupSys.io.hostd     <> io.hostd
+  dedupSys.io.networkIo <> io.networkIo
 
   // axi mux, RR arbitration
   val axiMux = AxiMux(conf.htConf.sizeFSMArray + 1)

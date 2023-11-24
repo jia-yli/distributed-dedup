@@ -39,18 +39,20 @@ class RingCompTests extends AnyFunSuite {
 // Define a module with parameter N that indicates the number of nodes
 case class RingComparator(width:Int = 4) extends Component {
   val io = new Bundle {
-    val result0 = out Bool()
-    val result1 = out Bool()          // The result of the comparison
+    val result0 = out UInt(3 bits)
+    val result1 = out UInt(3 bits)         // The result of the comparison
     // val result1 = out UInt(3 bits)          // The result of the comparison
   }
 
-  val valueIn = U(3)
-  val bar0 = Reg(UInt(2 bits)) init 2
-  val bar1 = Reg(UInt(2 bits)) init 0
-  val delta = Reg(UInt(2 bits)) init 2
-  bar0 := 2
-  bar1 := 0
-  delta := 2
-  io.result0 := valueIn >= bar0
-  io.result1 := valueIn < bar0 +^ delta // a + b will wrap around, lead to wrong res, a +^ b will consider carry
+  val valueIn = Reg(UInt(2 bits)) init 3 
+  val bar0 = Reg(UInt(2 bits)) init 0 
+  val bar1 = Reg(UInt(2 bits)) init 1 
+  val delta = Reg(UInt(2 bits)) init 2 
+
+  valueIn := 3 
+  bar0    := 0 
+  bar1    := 1 
+  delta   := 2 
+  io.result0 := delta +^ valueIn
+  io.result1 := delta -^ valueIn  // a + b will wrap around, lead to wrong res, a +^ b will consider carry
 }

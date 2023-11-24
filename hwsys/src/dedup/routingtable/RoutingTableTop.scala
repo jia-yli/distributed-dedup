@@ -35,8 +35,10 @@ case class PaddedRoutedWriteBackLookupRes (conf: DedupConfig) extends Bundle {
   val isInstr      = Bool() // False
 }
 
-case class RoutingTableConfig(routingChannelCount : Int = 1){
+case class RoutingTableConfig(routingChannelCount : Int = 1, routingDecisionBits : Int = 16){
   assert(routingChannelCount > 0, "must have at least 1 port for local lookup")
+  val routingChannelLogCount = log2Up(routingChannelCount)
+  assert((1 << routingChannelLogCount) == routingChannelCount, "Channel count must be power of 2")
 }
 
 case class RoutingTableTop(conf: DedupConfig) extends Component {
@@ -49,15 +51,22 @@ case class RoutingTableTop(conf: DedupConfig) extends Component {
     val localInstrOut        = master Stream(RoutedLookupInstr(conf))
     val localWriteBackResOut = master Stream(WriteBackLookupRes(conf))
     val remoteSendStrmOut    = Vec(master Stream(Bits(conf.networkWordSizeBit bits)), conf.rtConf.routingChannelCount - 1)
-    // info for routing
-    // init + nodeIdx + routing table info
+    // config port
+    val updateRoutingTableContent = in Bool()
+    val routingTableContent = new Bundle{
+      val hashValueStart = in Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
+      val hashValueLen = in Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
+      val nodeIdx = in Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
+      val activeChannelCount = in UInt((conf.rtConf.routingChannelLogCount + 1) bits)
+    }
   }
   val rNodeIdx = Reg(UInt(conf.nodeIdxWidth bits)) init 0
+  when(io.updateRoutingTableContent){
+    rNodeIdx := io.routingTableContent.nodeIdx(0)
+  }
   val rtCore = RoutingTableCore(conf)
-  // rtCore.io.instrIn        << preprocessingLogic.instrStrm
-  // rtCore.io.writeBackResIn << preprocessingLogic.writeBackResStrm
-  // rtCore.io.routedInstrOut = Vec(master Stream(RoutedLookupInstr(conf)), conf.rtConf.routingChannelCount)
-  // rtCore.io.routedWriteBackResOut = Vec(master Stream(RoutedWriteBackLookupRes(conf)), conf.rtConf.routingChannelCount)
+  rtCore.io.updateRoutingTableContent := io.updateRoutingTableContent
+  rtCore.io.routingTableContent assignAllByName io.routingTableContent
 
   val preprocessingLogic = new Area{
     // recv stream decode
@@ -91,7 +100,7 @@ case class RoutingTableTop(conf: DedupConfig) extends Component {
     rtCore.io.routedInstrOut(0) >> io.localInstrOut
     val instrDecodedRecvStrm = Stream(PaddedRoutedLookupInstr(conf))
     // local res write back
-    io.localWriteBackResOut assignAllByName rtCore.io.routedWriteBackResOut(0)
+    io.localWriteBackResOut.translateFrom(rtCore.io.routedWriteBackResOut(0)) {_ assignSomeByName _}
     // remote: merge req and res to same dst
     io.remoteSendStrmOut.zipWithIndex.foreach{ case (remoteSendStrm, idx) =>
       val routingChannelIdx = idx + 1

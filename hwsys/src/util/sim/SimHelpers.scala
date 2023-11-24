@@ -6,6 +6,13 @@ import spinal.core.sim._
 /** SimHelpers */
 object SimHelpers {
 
+  case class BitOffset(var high : Int = -1, var low : Int = -1){
+    def next(len : Int) : Unit = {
+      low = high + 1
+      high = low + len - 1
+    }
+  }
+
   def bigIntTruncVal(value: BigInt, hi: Int, lo: Int): BigInt = {
     assert(hi >= lo)
     (value >> lo) & (BigInt(1)<<(hi-lo+1))-1

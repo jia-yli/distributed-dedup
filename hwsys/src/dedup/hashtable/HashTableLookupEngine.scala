@@ -11,19 +11,20 @@ import util.ReverseStreamArbiterFactory
 /* Lookup Engine = Arbitration logic + FSM array + lock table 
   make sure seq instr in, seq res out in same order*/
 case class HashTableLookupEngineIO(conf: DedupConfig) extends Bundle {
-  val htConf      = conf.htConf
   val initEn      = in Bool()
   val clearInitStatus = in Bool()
   val initDone    = out Bool()
+  val updateRoutingTableContent = in Bool()
+  val nodeIdx     = in UInt(conf.nodeIdxWidth bits)
   // execution results
   val instrStrmIn = slave Stream(RoutedLookupInstr(conf))
   val res         = master Stream(RoutedWriteBackLookupRes(conf))
   // To Allocator
-  val mallocIdx   = slave Stream(UInt(htConf.ptrWidth bits))
-  val freeIdx     = master Stream(UInt(htConf.ptrWidth bits))
+  val mallocIdx   = slave Stream(UInt(conf.htConf.ptrWidth bits))
+  val freeIdx     = master Stream(UInt(conf.htConf.ptrWidth bits))
   /** DRAM interface */
   val axiConf     = Axi4ConfigAlveo.u55cHBM
-  val axiMem      = Vec(master(Axi4(axiConf)), htConf.sizeFSMArray)
+  val axiMem      = Vec(master(Axi4(axiConf)), conf.htConf.sizeFSMArray)
 }
 
 case class HashTableLookupEngine(conf: DedupConfig) extends Component {
@@ -38,6 +39,8 @@ case class HashTableLookupEngine(conf: DedupConfig) extends Component {
   val fsmArray = Array.tabulate(htConf.sizeFSMArray){idx => 
     val fsmInstance = HashTableLookupFSM(conf, idx)
     fsmInstance.io.initEn := io.initEn
+    fsmInstance.io.updateRoutingTableContent := io.updateRoutingTableContent
+    fsmInstance.io.nodeIdx := io.nodeIdx
     fsmInstrInArray(idx) >> fsmInstance.io.instrStrmIn
     fsmInstance.io.res >> fsmResBufferArray(idx).io.push
     fsmInstance.io.lockReq.pipelined(StreamPipe.FULL) >> lockManager.io.fsmArrayLockReq(idx)

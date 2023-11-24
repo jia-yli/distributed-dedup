@@ -51,6 +51,7 @@ case class HashTableEntryNoPadding (htConf: HashTableConfig) extends Bundle {
 case class HashTableLookupFSMIO(conf: DedupConfig) extends Bundle {
   val htConf      = conf.htConf
   val initEn      = in Bool()
+  val updateRoutingTableContent = in Bool()
   val nodeIdx     = in UInt(conf.nodeIdxWidth bits)
   // execution results
   val instrStrmIn = slave Stream(RoutedLookupInstr(conf))
@@ -67,14 +68,10 @@ case class HashTableLookupFSMIO(conf: DedupConfig) extends Bundle {
 
 case class HashTableLookupFSM (conf: DedupConfig, FSMId: Int = 0) extends Component {
   val htConf   = conf.htConf
-  val rFSMId   = Reg(UInt(log2Up(htConf.sizeFSMArray) bits)) init U(FSMId) allowUnsetRegToAvoidLatch
-  val rNodeIdx = Reg(UInt(conf.nodeIdxWidth bits)) init 0
-  when(io.initEn){
-    rNodeIdx := io.nodeIdx
-  }
-
   val io = HashTableLookupFSMIO(conf)
-
+  assert (htConf.bfOptimizedReconstruct == false, "Not a well-defined feature, should not be used")
+  val rFSMId    = Reg(UInt(log2Up(htConf.sizeFSMArray) bits)) init U(FSMId) allowUnsetRegToAvoidLatch
+  val rNodeIdx  = RegNextWhen(io.nodeIdx, io.updateRoutingTableContent, U(0))
   /** default status of strems */
   io.instrStrmIn.setBlocked()
   io.res.setIdle()

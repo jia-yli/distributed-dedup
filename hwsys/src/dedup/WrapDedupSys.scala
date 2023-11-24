@@ -8,29 +8,34 @@ import spinal.lib.bus.amba4.axilite._
 import util.RenameIO
 import util.Helpers._
 import coyote.HostDataIO
+import coyote.NetworkDataIO
 
-case class SysResp (conf: DedupConfig = DedupConfig()) extends Bundle {
+case class SysResp (conf: DedupConfig) extends Bundle {
   val SHA3Hash     = Bits(conf.htConf.hashValWidth bits)
   val RefCount     = UInt(conf.htConf.ptrWidth bits)
   val SSDLBA       = UInt(conf.htConf.ptrWidth bits)
+  val nodeIdx      = UInt(conf.nodeIdxWidth bits)
   val hostLBAStart = UInt(conf.htConf.ptrWidth bits)
   val hostLBALen   = UInt(conf.htConf.ptrWidth bits)
-  val padding      = UInt((512 - conf.htConf.hashValWidth - conf.htConf.ptrWidth * 4 - 1 - DedupCoreOp().getBitsWidth) bits)
+  val padding      = UInt((512 - conf.htConf.hashValWidth - conf.htConf.ptrWidth * 4 - conf.nodeIdxWidth - 1 - DedupCoreOp().getBitsWidth) bits)
   val isExec       = Bool() 
   val opCode       = DedupCoreOp()
 }
 
-class WrapDedupSys() extends Component with RenameIO {
+class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with RenameIO {
 
   val io = new Bundle {
     val axi_ctrl = slave(AxiLite4(AxiLite4Config(64, 64)))
     val hostd = new HostDataIO
+    val networkIo = new NetworkDataIO
     val axi_mem = Vec(master(Axi4(Axi4ConfigAlveo.u55cHBM)), DedupConfig().htConf.sizeFSMArray + 1)
   }
 
-  val dedupCore = new WrapDedupCore()
-  val sysIntf   = new SysIntf()
-  val hostIntf  = new HostIntf()
+  val hostIntf    = new HostIntf()
+  val networkIntf = new NetworkIntf(conf)
+  val dedupCore   = new WrapDedupCore()
+  val sysIntf     = new SysIntf()
+  
 
   /** pipeline the axi_mem & pgStrmIn for SLR crossing
    * dedupCore is arranged to SLR1, pgMover and other logic are in SLR0 */
@@ -42,6 +47,9 @@ class WrapDedupSys() extends Component with RenameIO {
   }
   // io.axi_mem_0 << dedupCore.io.axiMem.pipelined(StreamPipe.FULL)
   hostIntf.io.hostd.connectAllByName(io.hostd)
+  networkIntf.io.networkData.connectAllByName(io.networkIo)
+  dedupCore.io.remoteRecvStrmIn << networkIntf.io.recvDataStrm
+  (dedupCore.io.remoteSendStrmOut, networkIntf.io.sendDataStrmVec).zipped.foreach{_ >> _}
 
   val ctrlR = new AxiLite4SlaveFactory(io.axi_ctrl, useWriteStrobes = true)
   val ctrlRByteSize = ctrlR.busDataWidth/8
@@ -60,10 +68,30 @@ class WrapDedupSys() extends Component with RenameIO {
   //REG: host interface (addr: 2-8)
   val ctrlRNumHostIntf = hostIntf.io.regMap(ctrlR, 2)
 
+  val rUpdateRoutingTableContent = ctrlR.createWriteOnly(Bool(), (ctrlRNumHostIntf + 2) << log2Up(ctrlRByteSize), 0)
+  rUpdateRoutingTableContent.clearWhen(rUpdateRoutingTableContent)
+  val rActiveChannelCount = ctrlR.createReadAndWrite(UInt((conf.rtConf.routingChannelLogCount + 1) bits), (ctrlRNumHostIntf + 3) << log2Up(ctrlRByteSize), 0)
+
+  dedupCore.io.updateRoutingTableContent := rUpdateRoutingTableContent
+  dedupCore.io.routingTableContent.activeChannelCount := rActiveChannelCount
+
+  val rNodeIdx        = Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
+  val rHashValueStart = Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
+  val rHashValueLen   = Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
+  for (i <- 0 until conf.rtConf.routingChannelCount){
+    rNodeIdx       (i) := ctrlR.createReadAndWrite(Reg(UInt(conf.nodeIdxWidth bits))                    , (ctrlRNumHostIntf + 4 + 3 * i) << log2Up(ctrlRByteSize), 0)
+    rHashValueStart(i) := ctrlR.createReadAndWrite(Reg(UInt(conf.rtConf.routingDecisionBits bits))      , (ctrlRNumHostIntf + 5 + 3 * i) << log2Up(ctrlRByteSize), 0)
+    rHashValueLen  (i) := ctrlR.createReadAndWrite(Reg(UInt((conf.rtConf.routingDecisionBits + 1) bits)), (ctrlRNumHostIntf + 6 + 3 * i) << log2Up(ctrlRByteSize), 0)
+  }
+
+  dedupCore.io.routingTableContent.hashValueStart := rHashValueStart
+  dedupCore.io.routingTableContent.hashValueLen   := rHashValueLen
+  dedupCore.io.routingTableContent.nodeIdx        := rNodeIdx
+
   //Resp logic
   val pgRespPad = Stream(Bits(512 bits))
   pgRespPad.translateFrom(dedupCore.io.pgResp)((bitsPaddedResp, rawResp) => {
-    val paddedResp = SysResp()
+    val paddedResp = SysResp(conf)
     paddedResp assignSomeByName rawResp
     paddedResp.padding := 0
     bitsPaddedResp     := paddedResp.asBits
@@ -80,6 +108,6 @@ class WrapDedupSys() extends Component with RenameIO {
   hostIntf.io.pgResp << pgRespPad.pipelined(StreamPipe.FULL)
 
   /** pgStore throughput control [0:15] */
-  dedupCore.io.factorThrou := ctrlR.createReadAndWrite(UInt(5 bits), (ctrlRNumHostIntf+2) << log2Up(ctrlRByteSize), 0)
+  dedupCore.io.factorThrou := ctrlR.createReadAndWrite(UInt(5 bits), (ctrlRNumHostIntf + 4 + 3 * conf.rtConf.routingChannelCount) << log2Up(ctrlRByteSize), 0)
 
 }

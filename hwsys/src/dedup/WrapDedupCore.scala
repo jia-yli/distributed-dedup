@@ -53,7 +53,8 @@ case class DedupConfig(
   rfConf : RegisterFileConfig = RegisterFileConfig(tagWidth = 8), // 256 regs in register file
 
   // routing config
-  rtConf : RoutingTableConfig = RoutingTableConfig(routingChannelCount = 8),
+  rtConf : RoutingTableConfig = RoutingTableConfig(routingChannelCount = 8, 
+                                                   routingDecisionBits = 16),
   // 8192x4 bucket x 8 entry/bucket = 1<<18 hash table
   htConf : HashTableConfig = HashTableConfig (hashValWidth = 256, 
                                               ptrWidth = 32, 
@@ -101,6 +102,15 @@ case class WrapDedupCoreIO(conf: DedupConfig) extends Bundle {
   val clearInitStatus = in Bool()
   val initDone = out Bool()
 
+  // routing table config port
+  val updateRoutingTableContent = in Bool()
+  val routingTableContent = new Bundle{
+    val hashValueStart = in Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
+    val hashValueLen = in Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
+    val nodeIdx = in Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
+    val activeChannelCount = in UInt((conf.rtConf.routingChannelLogCount + 1) bits)
+  }
+
   /** hashTab memory interface */
   val axiMem   = Vec(master(Axi4(Axi4ConfigAlveo.u55cHBM)), conf.htConf.sizeFSMArray + 1)
   
@@ -146,10 +156,14 @@ case class WrapDedupCore() extends Component {
   routingTable.io.localInstrOut        >> hashTableSS.io.opStrmIn
   routingTable.io.localWriteBackResOut >> registerFile.io.lookupResWriteBackIn
   (routingTable.io.remoteSendStrmOut, io.remoteSendStrmOut).zipped.foreach{_ >> _}
+  routingTable.io.updateRoutingTableContent := io.updateRoutingTableContent
+  routingTable.io.routingTableContent assignAllByName io.routingTableContent
 
   // hash table
   hashTableSS.io.initEn          := io.initEn
   hashTableSS.io.clearInitStatus := io.clearInitStatus
+  hashTableSS.io.updateRoutingTableContent := io.updateRoutingTableContent
+  hashTableSS.io.nodeIdx         := io.routingTableContent.nodeIdx(0) // hard-coded: 0th entry must be local node
   io.initDone                    := hashTableSS.io.initDone
   hashTableSS.io.res             >> routingTable.io.localWriteBackResIn
   for (idx <- 0 until dedupConf.htConf.sizeFSMArray + 1){
