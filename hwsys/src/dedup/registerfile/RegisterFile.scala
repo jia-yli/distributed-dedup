@@ -16,7 +16,7 @@ case class UnregisteredLookupInstr(conf: DedupConfig) extends Bundle{
   val opCode   = DedupCoreOp()
 }
 
-case class rfInstrEntry(conf: DedupConfig) extends Bundle{
+case class RfInstrEntry(conf: DedupConfig) extends Bundle{
   val SHA3Hash = Bits(conf.htConf.hashValWidth bits)
   val opCode   = DedupCoreOp()
 }
@@ -37,7 +37,7 @@ case class HashTableLookupRes (conf: DedupConfig) extends Bundle {
   val opCode   = DedupCoreOp()
 }
 
-case class rfResEntry (conf: DedupConfig) extends Bundle {
+case class RfResEntry (conf: DedupConfig) extends Bundle {
   val RefCount = UInt(conf.htConf.ptrWidth bits)
   val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
   val nodeIdx  = UInt(conf.nodeIdxWidth bits)
@@ -48,7 +48,8 @@ case class RegisterFileConfig(
   tagWidth: Int = 8,      // 256 regs in register file
 )
 
-case class RegisterFile(conf: DedupConfig) extends Component {
+trait RegisterFileImpl {
+  val conf: DedupConfig
   val io = new Bundle {
     // local instr input
     val unregisteredInstrIn = slave Stream(UnregisteredLookupInstr(conf))
@@ -57,11 +58,14 @@ case class RegisterFile(conf: DedupConfig) extends Component {
     val lookupResWriteBackIn = slave Stream(WriteBackLookupRes(conf))
     val lookupResOut = master Stream(HashTableLookupRes(conf))
   }
+}
 
+case class RegisterFileRegister(conf: DedupConfig) extends Component with RegisterFileImpl{
   // Register array
+  require(conf.rfConf.tagWidth > 0)
   val regNum = 1 << conf.rfConf.tagWidth
-  val instrArray = Vec(Reg(rfInstrEntry(conf)), regNum)
-  val resArray = Vec(Reg(rfResEntry(conf)), regNum)
+  val instrArray = Vec(Reg(RfInstrEntry(conf)), regNum)
+  val resArray = Vec(Reg(RfResEntry(conf)), regNum)
   val execStatus = Vec(Reg(Bool()) init False, regNum) // true if exec done
 
   // instr stream in, register entry in register file

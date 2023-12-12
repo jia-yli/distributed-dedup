@@ -48,7 +48,7 @@ case class HashTableLookupEngine(conf: DedupConfig) extends Component {
     fsmInstance
   }
   // connect instr dispatcher to fsm
-  io.instrStrmIn >> ReverseStreamArbiterFactory().roundRobin.transactionLock.on(Array.tabulate(htConf.sizeFSMArray)(idx => fsmInstrInArray(idx)))
+  io.instrStrmIn.pipelined(StreamPipe.FULL) >> ReverseStreamArbiterFactory().roundRobin.transactionLock.on(Array.tabulate(htConf.sizeFSMArray)(idx => fsmInstrInArray(idx)))
   io.res << StreamArbiterFactory.roundRobin.transactionLock.on(Array.tabulate(htConf.sizeFSMArray)(idx => fsmResBufferArray(idx).io.pop)).pipelined(StreamPipe.FULL)
   io.freeIdx << StreamArbiterFactory.roundRobin.transactionLock.on(Array.tabulate(htConf.sizeFSMArray)(idx => fsmArray(idx).io.freeIdx.pipelined(StreamPipe.FULL)))
 

@@ -27,7 +27,11 @@ case class RoutingTableCore(conf: DedupConfig) extends Component {
       val activeChannelCount = in UInt((conf.rtConf.routingChannelLogCount + 1) bits)
     }
   }
-  // dummy fields for now
+  // ##################################################
+  //
+  // part 0: routing table content and initialization logic
+  //
+  // ##################################################
   val hashValueStartTable = Vec(Reg(UInt(conf.rtConf.routingDecisionBits bits)), conf.rtConf.routingChannelCount)
   val hashValueLenTable = Vec(Reg(UInt((conf.rtConf.routingDecisionBits + 1) bits)), conf.rtConf.routingChannelCount)
   val hashValueEndTable = Vec(Reg(UInt(conf.rtConf.routingDecisionBits bits)), conf.rtConf.routingChannelCount)
@@ -53,29 +57,78 @@ case class RoutingTableCore(conf: DedupConfig) extends Component {
     (nodeIdxTable, io.routingTableContent.nodeIdx).zipped.foreach{_ := _}
     rActiveChannelCount := io.routingTableContent.activeChannelCount
   }
-
+  // ##################################################
+  //
   // part 1: route instr
-  val routedInstrStrm = Stream(new Bundle{val instr = RoutedLookupInstr(conf) 
-                                          val routingChannelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)})
-  routedInstrStrm.translateFrom(io.instrIn.pipelined(StreamPipe.FULL)){(routedInstr, inputInstr) =>
+  //
+  // ##################################################
+  // stage 1: get all needed distance step 1
+  val nodeDistStrmStage1 = Stream(
+    new Bundle{
+      val instr = RoutedLookupInstr(conf) 
+      val insideToStart  = Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
+      val insideToEnd    = Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
+      val outsideToStart = Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
+      val outsideToEnd   = Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
+    }
+  )
+  nodeDistStrmStage1.translateFrom(io.instrIn.pipelined(StreamPipe.FULL)){(nodeDistStage1, inputInstr) =>
+    nodeDistStage1.instr := inputInstr
     val routingHashValue = UInt(conf.rtConf.routingDecisionBits bits)
     routingHashValue.assignFromBits(inputInstr.SHA3Hash(conf.htConf.idxBucketWidth + conf.rtConf.routingDecisionBits - 1 downto conf.htConf.idxBucketWidth))
-    // routing decision, log2Up(conf.rtConf.routingChannelCount) bits
-    val routingChannelIdx = U(0)
+    for (index <- 0 until conf.rtConf.routingChannelCount){
+      // option 1: inside
+      nodeDistStage1.insideToStart(index) := routingHashValue - hashValueStartTable(index)
+      nodeDistStage1.insideToEnd(index)   := hashValueEndTable(index) - routingHashValue
+      // option 2: nearest
+      nodeDistStage1.outsideToStart(index) := hashValueStartTable(index) - routingHashValue
+      nodeDistStage1.outsideToEnd(index)   := routingHashValue - hashValueEndTable(index)
+    }
+  }
+  // stage 2: get all needed distance step 2
+  val nodeDistStrmStage2 = Stream(
+    new Bundle{
+      val instr = RoutedLookupInstr(conf) 
+      val isInsideVec = Vec(new Bundle{val isInside = Bool()
+                                       val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}, conf.rtConf.routingChannelCount)
+      val outsideDistVec = Vec(new Bundle{val dist = UInt(conf.rtConf.routingDecisionBits bits)
+                                          val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}, conf.rtConf.routingChannelCount)
+    }
+  )
+  nodeDistStrmStage2.translateFrom(nodeDistStrmStage1.pipelined(StreamPipe.FULL)){(nodeDistStage2, nodeDistStage1) =>
+    nodeDistStage2.instr := nodeDistStage1.instr
     // option 1: inside
-    val isInsideVec = Vec(new Bundle{val isInside = Bool()
-                                     val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}, conf.rtConf.routingChannelCount)
-    isInsideVec.zipWithIndex.foreach{ case (element, index) =>
-      val insideToStart = UInt(conf.rtConf.routingDecisionBits bits)
-      insideToStart := routingHashValue - hashValueStartTable(index)
-      val insideToEnd = UInt(conf.rtConf.routingDecisionBits bits)
-      insideToEnd := hashValueEndTable(index) - routingHashValue
+    nodeDistStage2.isInsideVec.zipWithIndex.foreach{ case (element, index) =>
+      val insideToStart = nodeDistStage1.insideToStart(index)
+      val insideToEnd = nodeDistStage1.insideToEnd(index)
       val insideDistSum = insideToStart +^ insideToEnd
-      element.isInside := (insideDistSum > hashValueLenTable(index)) && (!(insideToEnd === U(0)))
+      when(hashValueLenTable(index).msb){
+        // one entry for all
+        element.isInside := True
+      } otherwise{
+        // otherwise
+        element.isInside := (insideDistSum === hashValueLenTable(index)) && (!(insideToEnd === U(0)))
+      }
       element.channelIdx := U(index)
     }
+    // option 2: nearest
+    nodeDistStage2.outsideDistVec.zipWithIndex.foreach{ case (element, index) =>
+      val outsideToStart = nodeDistStage1.outsideToStart(index)
+      val outsideToEnd = nodeDistStage1.outsideToEnd(index)
+      // get min distance
+      element.dist := (outsideToStart < outsideToEnd) ? outsideToStart | outsideToEnd
+      element.channelIdx := U(index)
+    }
+  }
+  // stage 3: get result from reduced balanced tree
+  val routedInstrStrm = Stream(new Bundle{val instr = RoutedLookupInstr(conf) 
+                                          val routingChannelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)})
+  routedInstrStrm.translateFrom(nodeDistStrmStage2.pipelined(StreamPipe.FULL)){(routedInstr, nodeDist) =>
+    // routing decision, log2Up(conf.rtConf.routingChannelCount) bits
+    val routingChannelIdx = U(0, conf.rtConf.routingChannelLogCount bits)
+    // option 1: inside
     // find if exist one and get index
-    val reducedIsInside = isInsideVec.reduceBalancedTree{ (input1, input2) =>
+    val reducedIsInside = nodeDist.isInsideVec.reduceBalancedTree{ (input1, input2) =>
       val output = new Bundle{val isInside = Bool(); val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}
       when(input2.isInside && (input2.channelIdx.resized < rActiveChannelCount)){
         // inside input2 and input2 is active
@@ -86,18 +139,7 @@ case class RoutingTableCore(conf: DedupConfig) extends Component {
       output
     }
     // option 2: nearest
-    val outsideDistVec = Vec(new Bundle{val dist = UInt(conf.rtConf.routingDecisionBits bits)
-                                        val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}, conf.rtConf.routingChannelCount)
-    outsideDistVec.zipWithIndex.foreach{ case (element, index) =>
-      val outsideToStart = UInt(conf.rtConf.routingDecisionBits bits)
-      outsideToStart := hashValueStartTable(index) - routingHashValue
-      val outsideToEnd = UInt(conf.rtConf.routingDecisionBits bits)
-      outsideToEnd := routingHashValue - hashValueEndTable(index)
-      // get min distance
-      element.dist := (outsideToStart < outsideToEnd) ? outsideToStart | outsideToEnd
-      element.channelIdx := U(index)
-    }
-    val reducedOutsideDist = outsideDistVec.reduceBalancedTree{ (input1, input2) =>
+    val reducedOutsideDist = nodeDist.outsideDistVec.reduceBalancedTree{ (input1, input2) =>
       val output = new Bundle{val dist = UInt(conf.rtConf.routingDecisionBits bits)
                               val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}
       when((input2.dist < input1.dist) && (input2.channelIdx.resized < rActiveChannelCount)){
@@ -115,7 +157,7 @@ case class RoutingTableCore(conf: DedupConfig) extends Component {
       // use nearest node
       routingChannelIdx := reducedOutsideDist.channelIdx
     }
-    routedInstr.instr := inputInstr
+    routedInstr.instr := nodeDist.instr
     routedInstr.routingChannelIdx := routingChannelIdx
   }
   // output
@@ -126,24 +168,49 @@ case class RoutingTableCore(conf: DedupConfig) extends Component {
   (demuxedRoutedInstrStrm, io.routedInstrOut).zipped.foreach{(a, b) =>
     b.translateFrom(a){_ := _.instr}
   }
-  
+
+  // ##################################################
+  //
   // part 2: route write back res
-  val routedWriteBackResStrm = Stream(new Bundle{val lookupRes = RoutedWriteBackLookupRes(conf) 
-                                                 val routingChannelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)})
-  routedWriteBackResStrm.translateFrom(io.writeBackResIn.pipelined(StreamPipe.FULL)){(routedWriteBackRes, inputWriteBackRes) =>
+  //
+  // ##################################################
+  // node index dist
+  val nodeIdxDistStrmStage1 = Stream(
+    new Bundle{
+      val writeBackRes = RoutedWriteBackLookupRes(conf)
+      val distCw  = Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
+      val distCcw = Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
+    }
+  )
+  nodeIdxDistStrmStage1.translateFrom(io.writeBackResIn.pipelined(StreamPipe.FULL)){(nodeIdxDistStage1, inputWriteBackRes) =>
+    nodeIdxDistStrmStage1.writeBackRes := inputWriteBackRes
     val dstNodeIdx = inputWriteBackRes.dstNode
-    val distVec = Vec(new Bundle{val dist = UInt(conf.nodeIdxWidth bits)
-                                 val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}, conf.rtConf.routingChannelCount)
-    distVec.zipWithIndex.foreach{ case (element, index) =>
-      val distCw = UInt(conf.nodeIdxWidth bits)
-      distCw := dstNodeIdx - nodeIdxTable(index)
-      val distCcw = UInt(conf.nodeIdxWidth bits)
-      distCcw := nodeIdxTable(index) - dstNodeIdx
+    for (index <- 0 until conf.rtConf.routingChannelCount){
+      nodeIdxDistStage1.distCw(index) := dstNodeIdx - nodeIdxTable(index)
+      nodeIdxDistStage1.distCcw(index) := nodeIdxTable(index) - dstNodeIdx
+    }
+  }
+  val nodeIdxDistStrmStage2 = Stream(
+    new Bundle{
+      val writeBackRes = RoutedWriteBackLookupRes(conf)
+      val distVec = Vec(new Bundle{val dist = UInt(conf.nodeIdxWidth bits)
+                                   val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}, conf.rtConf.routingChannelCount)
+    }
+  )
+  nodeIdxDistStrmStage2.translateFrom(nodeIdxDistStrmStage1.pipelined(StreamPipe.FULL)){(nodeIdxDistStage2, nodeIdxDistStage1) =>
+    nodeIdxDistStage2.writeBackRes := nodeIdxDistStage1.writeBackRes
+    nodeIdxDistStage2.distVec.zipWithIndex.foreach{ case (element, index) =>
+      val distCw = nodeIdxDistStage1.distCw(index)
+      val distCcw = nodeIdxDistStage1.distCcw(index)
       // get min distance
       element.dist := (distCw < distCcw) ? distCw | distCcw
       element.channelIdx := U(index)
     }
-    val reducedDist = distVec.reduceBalancedTree{ (input1, input2) =>
+  }
+  val routedWriteBackResStrm = Stream(new Bundle{val lookupRes = RoutedWriteBackLookupRes(conf) 
+                                                 val routingChannelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)})
+  routedWriteBackResStrm.translateFrom(nodeIdxDistStrmStage2.pipelined(StreamPipe.FULL)){(routedWriteBackRes, nodeIdxDist) =>
+    val reducedDist = nodeIdxDist.distVec.reduceBalancedTree{ (input1, input2) =>
       val output = new Bundle{val dist = UInt(conf.nodeIdxWidth bits)
                               val channelIdx = UInt(log2Up(conf.rtConf.routingChannelCount) bits)}
       when((input2.dist < input1.dist) && (input2.channelIdx.resized < rActiveChannelCount)){
@@ -155,7 +222,7 @@ case class RoutingTableCore(conf: DedupConfig) extends Component {
       output
     }
 
-    routedWriteBackRes.lookupRes := inputWriteBackRes
+    routedWriteBackRes.lookupRes := nodeIdxDist.writeBackRes
     routedWriteBackRes.routingChannelIdx := reducedDist.channelIdx
   }
   // output

@@ -21,7 +21,8 @@ import dedup.pagewriter.PageWriterResp
 import dedup.pagewriter.SSDInstr
 import dedup.pagewriter.PageWriterSubSystem
 import dedup.fingerprint.FingerprintEngine
-import dedup.registerfile.RegisterFile
+import dedup.registerfile.RegisterFileRegister
+import dedup.registerfile.RegisterFileBram
 import dedup.routingtable.RoutingTableTop
 
 case class DedupConfig(
@@ -50,6 +51,7 @@ case class DedupConfig(
   sha3Conf : SHA3Config = SHA3Config(dataWidth = 512, sha3Type = SHA3_256, groupSize = 64),
 
   // register file config
+  rfUseBramImpl : Boolean = true,
   rfConf : RegisterFileConfig = RegisterFileConfig(tagWidth = 8), // 256 regs in register file
 
   // routing config
@@ -136,7 +138,7 @@ case class WrapDedupCore() extends Component {
 
   /** modules */
   val fingerprintEngine = FingerprintEngine(dedupConf)
-  val registerFile = RegisterFile(dedupConf)
+  val registerFile = if (dedupConf.rfUseBramImpl) RegisterFileBram(dedupConf) else RegisterFileRegister(dedupConf)
   val routingTable = RoutingTableTop(dedupConf)
   val hashTableSS = HashTableSubSystem(dedupConf)
   val pgWriterSS = PageWriterSubSystem(dedupConf)

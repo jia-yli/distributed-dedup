@@ -27,8 +27,8 @@ case class SHA3Group(sha3Conf : SHA3Config = SHA3Config()) extends Component {
   /** Fast buffer WxDxN: 512bx512x16(sizeFastBufferGrp) */
   val fastBufferGrp = Array.fill(sizeFastBufferGrp)(StreamFifo(Fragment(Bits(512 bits)), 512))
   val fastBufferDistr = FrgmDistributor(sizeFastBufferGrp, 1, Bits(512 bits))
-  fastBufferDistr.io.strmI << io.frgmIn
-  (fastBufferGrp, fastBufferDistr.io.strmO).zipped.foreach(_.io.push << _)
+  fastBufferDistr.io.strmI << io.frgmIn.pipelined(StreamPipe.FULL)
+  (fastBufferGrp, fastBufferDistr.io.strmO).zipped.foreach(_.io.push << _.pipelined(StreamPipe.FULL))
   fastBufferGrp.foreach(_.io.flush := io.initEn) // flush all fast buffer
 
   /** stream frgm adapter 512 -> 32 */
@@ -40,7 +40,7 @@ case class SHA3Group(sha3Conf : SHA3Config = SHA3Config()) extends Component {
   /** Slow buffer WxDxN: 32bx1024x64(sizeSlowBufferGrp) */
   val slowBufferGrp = Array.fill(sizeSlowBufferGrp)(StreamFifo(Fragment(Bits(32 bits)), 1024))
   val slowBufferDistr = Array.fill(sizeFastBufferGrp)(FrgmDistributor(sizeSlowBufferGrp / sizeFastBufferGrp, 1, Bits(32 bits)))
-  (slowBufferDistr, slowBufferAdptStrm).zipped.foreach(_.io.strmI << _)
+  (slowBufferDistr, slowBufferAdptStrm).zipped.foreach(_.io.strmI << _.pipelined(StreamPipe.FULL))
 
   slowBufferGrp.zipWithIndex.foreach { case (e, i) =>
     val f = sizeSlowBufferGrp/sizeFastBufferGrp
@@ -63,7 +63,7 @@ case class SHA3Group(sha3Conf : SHA3Config = SHA3Config()) extends Component {
 
   /** Arbiter the results */
   val cntSel = Counter(sizeSlowBufferGrp, io.res.fire)
-  io.res.translateFrom(StreamMux(cntSel, sha3CoreGrp.map(_.io.rsp.pipelined(StreamPipe.FULL))))(_ := _.digest)
+  io.res.translateFrom(StreamMux(cntSel, sha3CoreGrp.map(_.io.rsp.pipelined(StreamPipe.FULL).pipelined(StreamPipe.FULL))))(_ := _.digest)
 
   /** pipeline interface (initEn, cmd, res) of some SHA3Core to enable SLR allocation in implementation
    * Normall one SLR in u55c device can have 48 SHA3 cores

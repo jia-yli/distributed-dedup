@@ -14,7 +14,7 @@ import scala.collection.mutable.ListBuffer
 import scala.util.Random
 
 object RegisterFileSimHelpers {
-  val conf = DedupConfig(nodeIdxWidth = 4, 
+  val conf = DedupConfig(nodeIdxWidth = 16, 
                          rfConf = RegisterFileConfig(tagWidth = 6)) // 16 entry
 
   val instrBitWidth = DedupCoreOp().getBitsWidth
@@ -59,7 +59,8 @@ case class RegisterFileTB() extends Component{
     val lookupResOut = master Stream(HashTableLookupRes(conf))
   }
 
-  val registerFile = RegisterFile(conf)
+  // val registerFile = RegisterFileRegister(conf)
+  val registerFile = RegisterFileBram(conf)
   registerFile.io <> io
 }
 
