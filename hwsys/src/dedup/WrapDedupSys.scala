@@ -11,15 +11,15 @@ import coyote.HostDataIO
 import coyote.NetworkDataIO
 
 case class SysResp (conf: DedupConfig) extends Bundle {
-  val SHA3Hash     = Bits(conf.htConf.hashValWidth bits)
-  val RefCount     = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA       = UInt(conf.htConf.ptrWidth bits)
-  val nodeIdx      = UInt(conf.nodeIdxWidth bits)
-  val hostLBAStart = UInt(conf.htConf.ptrWidth bits)
-  val hostLBALen   = UInt(conf.htConf.ptrWidth bits)
-  val padding      = UInt((512 - conf.htConf.hashValWidth - conf.htConf.ptrWidth * 4 - conf.nodeIdxWidth - 1 - DedupCoreOp().getBitsWidth) bits)
-  val isExec       = Bool() 
-  val opCode       = DedupCoreOp()
+  val SHA3Hash      = Bits(conf.htConf.hashValWidth bits)
+  val RefCount      = UInt(conf.htConf.ptrWidth bits)
+  val SSDLBA        = UInt(conf.htConf.ptrWidth bits)
+  val paddedNodeIdx = UInt(32 bits)
+  val hostLBAStart  = UInt(conf.htConf.ptrWidth bits)
+  val hostLBALen    = UInt(conf.htConf.ptrWidth bits)
+  val padding       = UInt((512 - conf.htConf.hashValWidth - conf.htConf.ptrWidth * 4 - 32 - 1 - DedupCoreOp().getBitsWidth) bits)
+  val isExec        = Bool() 
+  val opCode        = DedupCoreOp()
 }
 
 class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with RenameIO {
@@ -94,6 +94,7 @@ class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with Ren
     val paddedResp = SysResp(conf)
     paddedResp assignSomeByName rawResp
     paddedResp.padding := 0
+    paddedResp.paddedNodeIdx := rawResp.nodeIdx.resized
     bitsPaddedResp     := paddedResp.asBits
   })
   

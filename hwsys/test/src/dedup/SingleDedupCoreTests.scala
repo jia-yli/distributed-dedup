@@ -413,7 +413,7 @@ object DedupCoreSimHelpers {
     val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
     bitOffset.next(conf.htConf.ptrWidth)
     val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-    bitOffset.next(conf.nodeIdxWidth)
+    bitOffset.next(32)
     val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
     bitOffset.next(conf.htConf.ptrWidth)
     val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
