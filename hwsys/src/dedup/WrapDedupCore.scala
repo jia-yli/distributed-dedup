@@ -41,6 +41,7 @@ case class DedupConfig(
   /* multi-board */
   nodeIdxWidth : Int = 4,    // up to 16 nodes
   networkWordSize : Int = 64, // 64B per word
+  rdmaQpnWidth : Int = 10, // 10 bit for rdma q pair number
 
   /** config of submodules */
   // fingerprint engine

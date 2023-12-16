@@ -10,6 +10,7 @@ import coyote._
 
 import scala.collection.mutable
 import scala.collection.mutable.Queue
+import org.scalatest.tagobjects.Network
 
 object SimDriver {
   val axiMemSimConf = AxiMemorySimConfig(
@@ -78,6 +79,24 @@ object SimDriver {
     bus.aw.valid #= false
     bus.w.valid #= false
     bus.b.ready #= false
+  }
+
+  def initHostDataIO(bus: HostDataIO): Unit = {
+    bus.axis_host_sink.valid #= false
+    bus.bpss_wr_done.valid   #= false
+    bus.bpss_rd_done.valid   #= false
+    bus.axis_host_src.ready  #= false
+    bus.bpss_wr_req.ready    #= false
+    bus.bpss_rd_req.ready    #= false
+  }
+
+  def initNetworkIO(bus: NetworkDataIO): Unit = {
+    bus.rdma_0_sq       .ready #= false
+    bus.rdma_0_ack      .valid #= false
+    bus.rdma_0_rd_req   .valid #= false
+    bus.rdma_0_wr_req   .valid #= false
+    bus.axis_rdma_0_sink.valid #= false
+    bus.axis_rdma_0_src .ready #= false
   }
 
   // Axi4
@@ -220,6 +239,80 @@ object SimDriver {
           hostRecvQ.enqueue(d & ((BigInt(1) << 512)-1))
         }
         hostIO.bpss_wr_done.sendData(cd, 0.toBigInt) // pid
+      }
+    }
+  }
+
+  def networkModel2Ends(cd: ClockDomain,
+                        networkIoLst: Seq[NetworkDataIO],
+                        networkAddrLst: Seq[BigInt],
+                        printEn: Boolean = false
+                        ): Unit = {
+
+    assert(networkIoLst.length == 2)
+    assert(networkAddrLst.length == 2)
+
+    // 0 -> 1
+    fork {
+      while(true){
+        val port0Sq = networkIoLst(0).rdma_0_sq.recvData(cd)
+        val bitOffset = SimHelpers.BitOffset()
+        bitOffset.next(256-192-4-24-4-10-5)
+        bitOffset.next(192)
+        val msg = SimHelpers.bigIntTruncVal(port0Sq, bitOffset.high, bitOffset.low)
+        val len = SimHelpers.bigIntTruncVal(msg, 159, 128)
+        bitOffset.next(4+24+4)
+        bitOffset.next(10)
+        val qpn = SimHelpers.bigIntTruncVal(port0Sq, bitOffset.high, bitOffset.low)
+        assert(qpn == networkAddrLst(1))
+        // println(s"board 0 send to qpn: $qpn, len: $len")
+        bitOffset.next(5)
+        val opCode = SimHelpers.bigIntTruncVal(port0Sq, bitOffset.high, bitOffset.low)
+
+        for (i <- 0 until len.toInt/(512/8)) {
+          val port0Data = networkIoLst(0).axis_rdma_0_src.recvData(cd)
+          networkIoLst(1).axis_rdma_0_sink.sendData(cd, port0Data)
+          val last = SimHelpers.bigIntTruncVal(port0Data, 512 + 512/8 + 6, 512 + 512/8 + 6)
+          val wordCount = len.toInt/(512/8)
+          // println(s"board 0 send to qpn: $qpn, fragment: $i/$wordCount, last: $last")
+          if (i < (wordCount - 1)){
+            assert(last == 0)
+          } else {
+            assert(last == 1)
+          }
+        }
+      }
+    }
+
+    // 1 -> 0
+    fork {
+      while(true){
+        val port1Sq = networkIoLst(1).rdma_0_sq.recvData(cd)
+        val bitOffset = SimHelpers.BitOffset()
+        bitOffset.next(256-192-4-24-4-10-5)
+        bitOffset.next(192)
+        val msg = SimHelpers.bigIntTruncVal(port1Sq, bitOffset.high, bitOffset.low)
+        val len = SimHelpers.bigIntTruncVal(msg, 159, 128)
+        bitOffset.next(4+24+4)
+        bitOffset.next(10)
+        val qpn = SimHelpers.bigIntTruncVal(port1Sq, bitOffset.high, bitOffset.low)
+        assert(qpn == networkAddrLst(0))
+        // println(s"board 1 send to qpn: $qpn, len: $len")
+        bitOffset.next(5)
+        val opCode = SimHelpers.bigIntTruncVal(port1Sq, bitOffset.high, bitOffset.low)
+
+        for (i <- 0 until len.toInt/(512/8)) {
+          val port1Data = networkIoLst(1).axis_rdma_0_src.recvData(cd)
+          networkIoLst(0).axis_rdma_0_sink.sendData(cd, port1Data)
+          val last = SimHelpers.bigIntTruncVal(port1Data, 512 + 512/8 + 6, 512 + 512/8 + 6)
+          val wordCount = len.toInt/(512/8)
+          // println(s"board 1 send to qpn: $qpn, fragment: $i/$wordCount, last: $last")
+          if (i < (wordCount - 1)){
+            assert(last == 0)
+          } else {
+            assert(last == 1)
+          }
+        }
       }
     }
   }

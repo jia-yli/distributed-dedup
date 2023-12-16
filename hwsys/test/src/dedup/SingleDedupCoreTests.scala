@@ -297,6 +297,17 @@ object DedupCoreSimHelpers {
                                                              bfEnable = true,
                                                              bfOptimizedReconstruct = false,
                                                              sizeFSMArray = 6))
+  val dualCoreConf = DedupConfig(rfConf = RegisterFileConfig(tagWidth = 5),
+                                  rtConf = RoutingTableConfig(routingChannelCount = 8,
+                                                              routingDecisionBits = 16),
+                                  htConf = HashTableConfig (hashValWidth = 256, 
+                                                            ptrWidth = 32, 
+                                                            hashTableSize = 128 * 64, 
+                                                            expBucketSize = 128, 
+                                                            hashTableOffset = (BigInt(1) << 30), 
+                                                            bfEnable = true,
+                                                            bfOptimizedReconstruct = false,
+                                                            sizeFSMArray = 6))
   val instrBitWidth = DedupCoreOp().getBitsWidth
 
   // generate 512 bit representation of instruction
@@ -432,6 +443,69 @@ object DedupCoreSimHelpers {
       assert (sha3Hash == goldenSha3)
     }
     assert(nodeIdx == goldenNodeIdx)
+    assert(hostLBAStart == goldenPgIdx)
+    assert(hostLBALen == 1)
+    assert(opCode == goldenOpCode)
+    if (goldenOpCode == 1){
+      // write
+      assert(isExec == (RefCount == 1).toInt)
+      assert(goldenPgRefCountAppeared(uniquePageIdx)(RefCount.toInt - 1) == false)
+      goldenPgRefCountAppeared(uniquePageIdx)(RefCount.toInt - 1) = true
+    } else if (goldenOpCode == 2){
+      // erase
+      assert(isExec == (RefCount == 0).toInt)
+    } else if (goldenOpCode == 3){
+      // read
+      assert(isExec == 1)
+      assert(goldenPgRefCountAppeared(uniquePageIdx)(RefCount.toInt) == false)
+      goldenPgRefCountAppeared(uniquePageIdx)(RefCount.toInt) = true
+    } else {
+      assert (false)
+    }
+    
+    // println(s"pageIdx: ${pageIdx}")
+    // println(s"${RefCount} == ${goldenpgRefCount(pageIdx)}")
+    // println(s"${hostLBAStart} == ${goldenPgIdx(pageIdx)}")
+    // println(s"${hostLBALen} == 1")
+    // println(s"${isExec} == ${goldenPgIsNew(pageIdx)}")
+    // println(s"${opCode} == 0")
+    sha3Hash
+  }
+
+  def dualDedupSysDecodeAndCheck(respData : BigInt,
+                                 uniquePageIdx : Int,
+                                 goldenPgRefCountAppeared : ListBuffer[ListBuffer[Boolean]],
+                                //  goldenNodeIdx : Int,
+                                 goldenPgIdx : BigInt,
+                                 goldenOpCode : Int,
+                                 checkSha3 : Boolean = false,
+                                 goldenSha3 : BigInt = 0) : BigInt = {
+    val bitOffset = SimHelpers.BitOffset()
+    bitOffset.next(conf.htConf.hashValWidth)
+    val sha3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.htConf.ptrWidth)
+    val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.htConf.ptrWidth)
+    val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(32)
+    val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.htConf.ptrWidth)
+    val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    bitOffset.next(conf.htConf.ptrWidth)
+    val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+    val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
+    val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
+
+    // val uniquePageIdx = pageIdx % uniquePageNum
+    // print(pageIdx, uniquePageIdx)
+    // print(goldenPgRefCountAppeared(uniquePageIdx))
+    if (checkSha3) {
+      // println(uniquePageIdx)
+      // println(SimHelpers.bigIntTruncVal(sha3Hash, 63, 0))
+      // println(SimHelpers.bigIntTruncVal(goldenSha3, 63, 0))
+      assert (sha3Hash == goldenSha3)
+    }
+    // assert(nodeIdx == goldenNodeIdx)
     assert(hostLBAStart == goldenPgIdx)
     assert(hostLBALen == 1)
     assert(opCode == goldenOpCode)

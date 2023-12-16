@@ -19,6 +19,19 @@ case class ReqT() extends Bundle {
   val vaddr                   = UInt(48 bits)
 }
 
+case class RdmaReqT() extends Bundle {
+  val rsrvd  = UInt(256-192-4-24-4-10-5 bits) // 17b
+  val msg    = UInt(192 bits)
+  val offs   = UInt(4 bits)
+  val ssn    = UInt(24 bits)
+  val cmplt  = Bool()
+  val last   = Bool()
+  val mode   = Bool()
+  val host   = Bool()
+  val qpn    = UInt(10 bits)
+  val opcode = UInt(5 bits)
+}
+
 case class BpssDone() extends Bundle {
   val pid = UInt(6 bits)
 }
@@ -31,6 +44,13 @@ case class StreamData(width: Int) extends Bundle {
 case class BpssData(width: Int) extends Bundle {
   val tdata = Bits(width bits)
   val tkeep = Bits(width / 8 bits) // will be renamed in RenameIO
+  val tlast = Bool()
+}
+
+case class RdmaData(width: Int) extends Bundle {
+  val tdata = Bits(width bits)
+  val tkeep = Bits(width / 8 bits) // will be renamed in RenameIO
+  val tid   = UInt(6 bits)
   val tlast = Bool()
 }
 
@@ -60,9 +80,42 @@ class HostDataIO extends Bundle {
   // }
 }
 
+// coyote-rdma/hw/scripts/wr_hdl/template_gen/dynamic_wrapper.txt Line 1623:
+// {% if cnfg.en_rdma_0 %}
+//     {% if cnfg.en_rpc %}
+//         .rdma_0_sq_valid	    (rdma_0_sq_user_ul[{{ i }}].valid),
+//         .rdma_0_sq_ready	    (rdma_0_sq_user_ul[{{ i }}].ready),
+//         .rdma_0_sq_data	        (rdma_0_sq_user_ul[{{ i }}].data),
+//         .rdma_0_ack_valid	    (rdma_0_ack_user_ul[{{ i }}].valid),
+//         .rdma_0_ack_ready	    (rdma_0_ack_user_ul[{{ i }}].ready),
+//         .rdma_0_ack_data	    (rdma_0_ack_user_ul[{{ i }}].data),
+//     {% endif %}
+//         .rdma_0_rd_req_valid	(rdma_0_rd_req_ul[{{ i }}].valid),
+//         .rdma_0_rd_req_ready	(rdma_0_rd_req_ul[{{ i }}].ready),
+//         .rdma_0_rd_req_data	    (rdma_0_rd_req_ul[{{ i }}].data),
+//         .rdma_0_wr_req_valid	(rdma_0_wr_req_ul[{{ i }}].valid),
+//         .rdma_0_wr_req_ready	(rdma_0_wr_req_ul[{{ i }}].ready),
+//         .rdma_0_wr_req_data	    (rdma_0_wr_req_ul[{{ i }}].data),
+//         .axis_rdma_0_sink_tdata  (axis_rdma_0_in_ul[{{ i }}].tdata),
+//         .axis_rdma_0_sink_tkeep  (axis_rdma_0_in_ul[{{ i }}].tkeep),
+//         .axis_rdma_0_sink_tid    (axis_rdma_0_in_ul[{{ i }}].tid),
+//         .axis_rdma_0_sink_tlast  (axis_rdma_0_in_ul[{{ i }}].tlast),
+//         .axis_rdma_0_sink_tready (axis_rdma_0_in_ul[{{ i }}].tready),
+//         .axis_rdma_0_sink_tvalid (axis_rdma_0_in_ul[{{ i }}].tvalid),
+//         .axis_rdma_0_src_tdata   (axis_rdma_0_out_ul[{{ i }}].tdata),
+//         .axis_rdma_0_src_tkeep   (axis_rdma_0_out_ul[{{ i }}].tkeep),
+//         .axis_rdma_0_src_tid     (axis_rdma_0_out_ul[{{ i }}].tid),
+//         .axis_rdma_0_src_tlast   (axis_rdma_0_out_ul[{{ i }}].tlast),
+//         .axis_rdma_0_src_tready  (axis_rdma_0_out_ul[{{ i }}].tready),
+//         .axis_rdma_0_src_tvalid  (axis_rdma_0_out_ul[{{ i }}].tvalid),
+// {% endif %}
 class NetworkDataIO extends Bundle {
-  val remoteRecvStrmIn  = slave Stream(Bits(512 bits))
-  val remoteSendStrmOut = master Stream(Bits(512 bits))
+  val rdma_0_sq        = master Stream StreamData(256)
+  val rdma_0_ack       = slave Stream StreamData(96)
+  val rdma_0_rd_req    = slave Stream StreamData(96)
+  val rdma_0_wr_req    = slave Stream StreamData(96)
+  val axis_rdma_0_sink = slave Stream RdmaData(512)
+  val axis_rdma_0_src  = master Stream RdmaData(512)
 }
 
 // class CMemHostIO(cmemAxiConf: Axi4Config) extends Bundle {

@@ -48,8 +48,12 @@ object SingleDedupSysSim {
     dut.io.hostd.axis_host_src.ready  #= false
     dut.io.hostd.bpss_wr_req.ready    #= false
     dut.io.hostd.bpss_rd_req.ready    #= false
-    dut.io.networkIo.remoteRecvStrmIn.valid  #= false
-    dut.io.networkIo.remoteSendStrmOut.ready #= false
+    dut.io.networkIo.rdma_0_sq       .ready #= false
+    dut.io.networkIo.rdma_0_ack      .valid #= false
+    dut.io.networkIo.rdma_0_rd_req   .valid #= false
+    dut.io.networkIo.rdma_0_wr_req   .valid #= false
+    dut.io.networkIo.axis_rdma_0_sink.valid #= false
+    dut.io.networkIo.axis_rdma_0_src .ready #= false
 
     /** memory model for HashTab */
     SimDriver.instAxiMemSim(dut.io.axi_mem, dut.clockDomain, None)
@@ -154,17 +158,17 @@ object SingleDedupSysSim {
     setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 5<<3, 4096) // LEN
     setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 6<<3, inputBufferTotalLen/64) // CNT = pageNum
     setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 7<<3, 0) // PID
+    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 10 << 3, 8) // factorThrou
     // init routing table
     val simNodeIdx = 3
     val conf = DedupCoreSimHelpers.singleCoreConf
-    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 11 << 3, 1) // active channel count
+    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 12 << 3, 1) // active channel count
     for (index <- 0 until conf.rtConf.routingChannelCount){
-      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (12 + 3 * index) << 3, {if (index == 0) simNodeIdx else (simNodeIdx + 1)}) // node
-      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (13 + 3 * index) << 3, 0) // start
-      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (14 + 3 * index) << 3, {if (index == 0) (1 << conf.rtConf.routingDecisionBits) else 0}) // len
+      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (13 + 3 * index) << 3, {if (index == 0) simNodeIdx else (simNodeIdx + 1)}) // node
+      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (14 + 3 * index) << 3, 0) // start
+      setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (15 + 3 * index) << 3, {if (index == 0) (1 << conf.rtConf.routingDecisionBits) else 0}) // len
     }
-    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 10 << 3, 1)
-    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (8 + 4 + 3 * conf.rtConf.routingChannelCount) << 3, 8) // factorThrou
+    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 11 << 3, 1)
 
     // confirm initDone
     while(readAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 1<<3) == 0) {
@@ -391,7 +395,7 @@ case class SingleDedupSysTB() extends Component{
     val axi_mem = master(Axi4(Axi4ConfigAlveo.u55cHBM))
   }
 
-  val dedupSys = new WrapDedupSys()
+  val dedupSys = new WrapDedupSys(conf)
 
   // auto connect
   dedupSys.io.axi_ctrl  <> io.axi_ctrl

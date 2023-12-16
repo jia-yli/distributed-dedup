@@ -80,10 +80,10 @@ class HostIntf() extends Component {
 
   bpss_rd_req.vaddr := rdAddr.resized
   bpss_rd_req.len := io.len.resized
-  bpss_rd_req.stream := False
+  bpss_rd_req.stream := True
   bpss_rd_req.sync := False
   bpss_rd_req.ctl := True
-  bpss_rd_req.host := True
+  bpss_rd_req.host := False
   bpss_rd_req.dest := 0
   bpss_rd_req.pid := io.pid
   bpss_rd_req.vfid := 0
@@ -110,10 +110,10 @@ class HostIntf() extends Component {
   val wrReqBatchSize = 1024 // batch resp of 16 pages, each page resp is 512b (64B)
   bpss_wr_req.vaddr := wrAddr.resized
   bpss_wr_req.len := wrReqBatchSize
-  bpss_wr_req.stream := False
+  bpss_wr_req.stream := True
   bpss_wr_req.sync := False
   bpss_wr_req.ctl := True
-  bpss_wr_req.host := True
+  bpss_wr_req.host := False
   bpss_wr_req.dest := 0
   bpss_wr_req.pid := io.pid
   bpss_wr_req.vfid := 0

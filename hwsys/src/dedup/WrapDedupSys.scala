@@ -65,23 +65,30 @@ class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with Ren
   dedupCore.io.clearInitStatus := rInitExtended(1) && rInitExtended(0)
   //REG: initDone (readOnly, addr: 1, bit: 0)
   ctrlR.read(dedupCore.io.initDone, 1 << log2Up(ctrlRByteSize), 0)
-  //REG: host interface (addr: 2-8)
-  val ctrlRNumHostIntf = hostIntf.io.regMap(ctrlR, 2)
-
-  val rUpdateRoutingTableContent = ctrlR.createWriteOnly(Bool(), (ctrlRNumHostIntf + 2) << log2Up(ctrlRByteSize), 0)
+  //REG: host interface (addr: 2-2+8)
+  val ctrlRNumHostIntf = hostIntf.io.regMap(ctrlR, 2) // 8
+  /** pgStore throughput control [0:15] */
+  dedupCore.io.factorThrou := ctrlR.createReadAndWrite(UInt(5 bits), (ctrlRNumHostIntf + 2) << log2Up(ctrlRByteSize), 0) // 10
+  val routingRegStart = ctrlRNumHostIntf + 3 // 11
+  val rUpdateRoutingTableContent = ctrlR.createWriteOnly(Bool(), routingRegStart << log2Up(ctrlRByteSize), 0) // 11
   rUpdateRoutingTableContent.clearWhen(rUpdateRoutingTableContent)
-  val rActiveChannelCount = ctrlR.createReadAndWrite(UInt((conf.rtConf.routingChannelLogCount + 1) bits), (ctrlRNumHostIntf + 3) << log2Up(ctrlRByteSize), 0)
+  val rActiveChannelCount = ctrlR.createReadAndWrite(UInt((conf.rtConf.routingChannelLogCount + 1) bits), (routingRegStart + 1) << log2Up(ctrlRByteSize), 0) // 12
 
+  networkIntf.io.updateRoutingTableContent := rUpdateRoutingTableContent
   dedupCore.io.updateRoutingTableContent := rUpdateRoutingTableContent
   dedupCore.io.routingTableContent.activeChannelCount := rActiveChannelCount
 
   val rNodeIdx        = Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
   val rHashValueStart = Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
   val rHashValueLen   = Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
-  for (i <- 0 until conf.rtConf.routingChannelCount){
-    rNodeIdx       (i) := ctrlR.createReadAndWrite(Reg(UInt(conf.nodeIdxWidth bits))                    , (ctrlRNumHostIntf + 4 + 3 * i) << log2Up(ctrlRByteSize), 0)
-    rHashValueStart(i) := ctrlR.createReadAndWrite(Reg(UInt(conf.rtConf.routingDecisionBits bits))      , (ctrlRNumHostIntf + 5 + 3 * i) << log2Up(ctrlRByteSize), 0)
-    rHashValueLen  (i) := ctrlR.createReadAndWrite(Reg(UInt((conf.rtConf.routingDecisionBits + 1) bits)), (ctrlRNumHostIntf + 6 + 3 * i) << log2Up(ctrlRByteSize), 0)
+  for (i <- 0 until conf.rtConf.routingChannelCount){ // 13 -> 36
+    rNodeIdx       (i) := ctrlR.createReadAndWrite(Reg(UInt(conf.nodeIdxWidth bits))                    , (routingRegStart + 2 + 3 * i) << log2Up(ctrlRByteSize), 0)
+    rHashValueStart(i) := ctrlR.createReadAndWrite(Reg(UInt(conf.rtConf.routingDecisionBits bits))      , (routingRegStart + 3 + 3 * i) << log2Up(ctrlRByteSize), 0)
+    rHashValueLen  (i) := ctrlR.createReadAndWrite(Reg(UInt((conf.rtConf.routingDecisionBits + 1) bits)), (routingRegStart + 4 + 3 * i) << log2Up(ctrlRByteSize), 0)
+  }
+  val rdmaQpnRegStart = routingRegStart + 2 + 3 * conf.rtConf.routingChannelCount // 37 -> 43
+  for (i <- 0 until conf.rtConf.routingChannelCount - 1){
+    networkIntf.io.rdmaQpnVec(i) := ctrlR.createReadAndWrite(Reg(UInt(conf.rdmaQpnWidth bits)), (rdmaQpnRegStart + i) << log2Up(ctrlRByteSize), 0)
   }
 
   dedupCore.io.routingTableContent.hashValueStart := rHashValueStart
@@ -97,7 +104,7 @@ class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with Ren
     paddedResp.paddedNodeIdx := rawResp.nodeIdx.resized
     bitsPaddedResp     := paddedResp.asBits
   })
-  
+
   // dummy SSD interface
   dedupCore.io.SSDDataIn .ready    := True
   dedupCore.io.SSDDataOut.valid    := False
@@ -107,8 +114,4 @@ class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with Ren
 
   /** SLR0 << SLR1 */
   hostIntf.io.pgResp << pgRespPad.pipelined(StreamPipe.FULL)
-
-  /** pgStore throughput control [0:15] */
-  dedupCore.io.factorThrou := ctrlR.createReadAndWrite(UInt(5 bits), (ctrlRNumHostIntf + 4 + 3 * conf.rtConf.routingChannelCount) << log2Up(ctrlRByteSize), 0)
-
 }

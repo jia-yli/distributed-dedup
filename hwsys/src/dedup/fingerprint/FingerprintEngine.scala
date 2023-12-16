@@ -52,7 +52,7 @@ case class FingerprintEngine(conf : DedupConfig) extends Component {
   instrIssuer.io.initEn              := io.initEn
   instrIssuer.io.readyInstrStream    << decodedReadyInstrQueue.io.pop.pipelined(StreamPipe.FULL)
   instrIssuer.io.waitingInstrStream  << decodedWaitingInstrQueue.io.pop.pipelined(StreamPipe.FULL)
-  instrIssuer.io.SHA3ResStream       << sha3ResQueue.io.pop.pipelined(StreamPipe.FULL)
+  instrIssuer.io.SHA3ResStream       << sha3ResQueue.io.pop.pipelined(StreamPipe.FULL).pipelined(StreamPipe.FULL)
 
   instrIssuer.io.instrIssueStream.pipelined(StreamPipe.FULL) >> io.res
 }

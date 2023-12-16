@@ -84,11 +84,11 @@ mkdir build && cd build
 
 # use desired number memory channel: -DN_MEM_CHAN
 cmake .. -DFDEV_NAME=u55c -DVITIS_HLS=1 -DEN_BPSS=1 -DHBM_BPSS=1 -DEN_UCLK=1 -DUCLK_F=250 -DAXI_ID_BITS=6 -DAPPS=dedup -DAPPS_CONFIG=4k -DN_MEM_CHAN=7 -DEN_MEM_BPSS=1
+cmake .. -DFDEV_NAME=u55c -DEXAMPLE=perf_dedup
 
 # use screen session on build server
 screen
-make shell
-make compile
+make shell && make compile
 # coyote done
 
 # lsof +D /path

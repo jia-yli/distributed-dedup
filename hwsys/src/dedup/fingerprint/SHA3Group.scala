@@ -62,8 +62,25 @@ case class SHA3Group(sha3Conf : SHA3Config = SHA3Config()) extends Component {
   }
 
   /** Arbiter the results */
-  val cntSel = Counter(sizeSlowBufferGrp, io.res.fire)
-  io.res.translateFrom(StreamMux(cntSel, sha3CoreGrp.map(_.io.rsp.pipelined(StreamPipe.FULL).pipelined(StreamPipe.FULL))))(_ := _.digest)
+  // 1 stage impl: -1.5ns slack on > 10 nets
+  // val cntSel = Counter(sizeSlowBufferGrp, io.res.fire)
+  // io.res.translateFrom(StreamMux(cntSel, sha3CoreGrp.map(_.io.rsp.pipelined(StreamPipe.FULL).pipelined(StreamPipe.FULL))))(_ := _.digest)
+
+  // 2 stage impl for timing
+  val cntResOutGrpStage1 = 8 // 8 groups
+  val sizeResOutGrpStage1 = sizeSlowBufferGrp/cntResOutGrpStage1 // 8 per group
+  assert (sizeSlowBufferGrp % cntResOutGrpStage1 == 0)
+  val resStage1 = Vec(Stream(Bits(sha3Conf.resWidth bits)), cntResOutGrpStage1)
+  resStage1.zipWithIndex.foreach{ case (groupRes, groupIdx) =>
+    val startIdx = groupIdx * sizeResOutGrpStage1
+    val endIdx = startIdx + sizeResOutGrpStage1
+    val cntSel = Counter(sizeResOutGrpStage1, groupRes.fire)
+    groupRes.translateFrom(StreamMux(cntSel, sha3CoreGrp.slice(startIdx, endIdx).map(_.io.rsp.pipelined(StreamPipe.FULL)))){_ := _.digest}
+  }
+
+  val cntFireStage2 = Counter(sizeResOutGrpStage1, io.res.fire)
+  val cntSel2 = Counter(cntResOutGrpStage1, cntFireStage2.willOverflow)
+  io.res.translateFrom(StreamMux(cntSel2, resStage1.map(_.pipelined(StreamPipe.FULL)))){_ := _}
 
   /** pipeline interface (initEn, cmd, res) of some SHA3Core to enable SLR allocation in implementation
    * Normall one SLR in u55c device can have 48 SHA3 cores

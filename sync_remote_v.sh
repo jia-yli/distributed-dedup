@@ -5,8 +5,10 @@ TARGET_FOLDER="generated_rtl"  # Replace with the path to your target folder
 ARCHIVE_NAME="generated_rtl.tar.gz"
 SERVER_USER="jiayli"
 SERVER_IP="alveo-build"
-SERVER_PATH="/home/$SERVER_USER/projects/dedup"
-EXTRACT_PATH="/home/$SERVER_USER/projects/dedup"
+# SERVER_PATH="/home/$SERVER_USER/projects/dedup"
+# EXTRACT_PATH="/home/$SERVER_USER/projects/dedup"
+SERVER_PATH="/home/$SERVER_USER/projects/coyote-rdma/hw/hdl/operators/examples/dedup"
+EXTRACT_PATH="/home/$SERVER_USER/projects/coyote-rdma/hw/hdl/operators/examples/dedup"
 
 echo "Generating Verilog"
 rm -rf "$TARGET_FOLDER"
