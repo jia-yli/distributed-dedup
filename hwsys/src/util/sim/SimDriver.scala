@@ -268,7 +268,7 @@ object SimDriver {
         // println(s"board 0 send to qpn: $qpn, len: $len")
         bitOffset.next(5)
         val opCode = SimHelpers.bigIntTruncVal(port0Sq, bitOffset.high, bitOffset.low)
-
+        cd.waitSampling(256)
         for (i <- 0 until len.toInt/(512/8)) {
           val port0Data = networkIoLst(0).axis_rdma_0_src.recvData(cd)
           networkIoLst(1).axis_rdma_0_sink.sendData(cd, port0Data)
@@ -300,7 +300,7 @@ object SimDriver {
         // println(s"board 1 send to qpn: $qpn, len: $len")
         bitOffset.next(5)
         val opCode = SimHelpers.bigIntTruncVal(port1Sq, bitOffset.high, bitOffset.low)
-
+        cd.waitSampling(128)
         for (i <- 0 until len.toInt/(512/8)) {
           val port1Data = networkIoLst(1).axis_rdma_0_src.recvData(cd)
           networkIoLst(0).axis_rdma_0_sink.sendData(cd, port1Data)
