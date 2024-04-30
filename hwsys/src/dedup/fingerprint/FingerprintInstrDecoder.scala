@@ -11,7 +11,7 @@ case class DecodedReadyInstr(conf: DedupConfig) extends Bundle{
 }
 
 case class DecodedWaitingInstr(conf: DedupConfig) extends Bundle{
-  val pageCount = UInt(conf.LBAWidth bits)
+  val pageCount = UInt(conf.lbaWidth bits)
   val opCode = DedupCoreOp()
   val tag = UInt(conf.htConf.instrTagWidth bits)
 }

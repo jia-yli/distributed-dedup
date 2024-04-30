@@ -51,7 +51,7 @@ case class FingerprintInstrIssuer(conf: DedupConfig) extends Component{
     fire  := ready & valid
 
     // slicing: slice instruction with pagecount = 10 to 10x instr on one page 
-    val slicingCounter = Counter(conf.LBAWidth bits)
+    val slicingCounter = Counter(conf.lbaWidth bits)
     when(io.initEn){
       slicingCounter.clear()
     }.otherwise{

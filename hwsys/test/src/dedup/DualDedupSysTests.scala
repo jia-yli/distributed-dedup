@@ -71,14 +71,16 @@ object DualDedupSysSim {
     val uniquePgDataSys0 = List.tabulate[BigInt](uniquePageNum*pageSize/bytePerWord){idx => idx/(pageSize/bytePerWord)}
     val uniquePgDataSys1 = List.tabulate[BigInt](uniquePageNum*pageSize/bytePerWord){idx => (idx + uniquePageNum*pageSize/bytePerWord)/(pageSize/bytePerWord)}
     
+    val simDataNode0 = BigInt(17)
+    val simDataNode1 = BigInt(99)
     val opStrmDataSys0: ListBuffer[BigInt] = ListBuffer()
     for (i <- 0 until opNum) {
-      val newInstr = DedupCoreSimHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp)
+      val newInstr = DedupCoreSimHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp, simDataNode0)
       opStrmDataSys0.append(newInstr)
     }
     val opStrmDataSys1: ListBuffer[BigInt] = ListBuffer()
     for (i <- 0 until opNum) {
-      val newInstr = DedupCoreSimHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp)
+      val newInstr = DedupCoreSimHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp, simDataNode1)
       opStrmDataSys1.append(newInstr)
     }
 
@@ -232,7 +234,8 @@ object DualDedupSysSim {
     setAxi4LiteReg(dut.clockDomain, dut.io.board_0_axi_ctrl, 17 << 3, 1 << (conf.rtConf.routingDecisionBits - 1)) // start
     setAxi4LiteReg(dut.clockDomain, dut.io.board_0_axi_ctrl, 18 << 3, 1 << (conf.rtConf.routingDecisionBits - 1)) // len
     // qpn
-    setAxi4LiteReg(dut.clockDomain, dut.io.board_0_axi_ctrl, 37 << 3, qpn1) // node
+    setAxi4LiteReg(dut.clockDomain, dut.io.board_0_axi_ctrl, 43 << 3, qpn1) // node
+    setAxi4LiteReg(dut.clockDomain, dut.io.board_0_axi_ctrl, 52 << 3, 0) // routing mode
     setAxi4LiteReg(dut.clockDomain, dut.io.board_0_axi_ctrl, 11 << 3, 1)
 
     // board 1
@@ -245,7 +248,8 @@ object DualDedupSysSim {
     setAxi4LiteReg(dut.clockDomain, dut.io.board_1_axi_ctrl, 17 << 3, 0) // start
     setAxi4LiteReg(dut.clockDomain, dut.io.board_1_axi_ctrl, 18 << 3, 1 << (conf.rtConf.routingDecisionBits - 1)) // len
     // qpn
-    setAxi4LiteReg(dut.clockDomain, dut.io.board_1_axi_ctrl, 37 << 3, qpn0) // node
+    setAxi4LiteReg(dut.clockDomain, dut.io.board_1_axi_ctrl, 43 << 3, qpn0) // node
+    setAxi4LiteReg(dut.clockDomain, dut.io.board_1_axi_ctrl, 52 << 3, 0) // routing mode
     setAxi4LiteReg(dut.clockDomain, dut.io.board_1_axi_ctrl, 11 << 3, 1)
 
     // confirm initDone
@@ -295,20 +299,21 @@ object DualDedupSysSim {
                                                                     goldenPgIdx =  goldenPgIdxSys0(respIdx0),
                                                                     goldenOpCode = 1,
                                                                     checkSha3 = false,
-                                                                    goldenSha3  = 0)
+                                                                    goldenSha3  = 0,
+                                                                    goldenDataNode = simDataNode0)
 
       // val bitOffset = SimHelpers.BitOffset()
       // bitOffset.next(conf.htConf.hashValWidth)
       // val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       // bitOffset.next(conf.nodeIdxWidth)
       // val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       // val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
       // val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
@@ -349,20 +354,21 @@ object DualDedupSysSim {
                                                                     goldenPgIdx =  goldenPgIdxSys1(respIdx1),
                                                                     goldenOpCode = 1,
                                                                     checkSha3 = false,
-                                                                    goldenSha3  = 0)
+                                                                    goldenSha3  = 0,
+                                                                    goldenDataNode = simDataNode1)
 
       // val bitOffset = SimHelpers.BitOffset()
       // bitOffset.next(conf.htConf.hashValWidth)
       // val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       // bitOffset.next(conf.nodeIdxWidth)
       // val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       // val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
       // val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
@@ -429,15 +435,15 @@ object DualDedupSysSim {
     //   val bitOffset = SimHelpers.BitOffset()
     //   bitOffset.next(conf.htConf.hashValWidth)
     //   val sha3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-    //   bitOffset.next(conf.htConf.ptrWidth)
+    //   bitOffset.next(conf.lbaWidth)
     //   val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-    //   bitOffset.next(conf.htConf.ptrWidth)
+    //   bitOffset.next(conf.lbaWidth)
     //   val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
     //   bitOffset.next(32)
     //   val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-    //   bitOffset.next(conf.htConf.ptrWidth)
+    //   bitOffset.next(conf.lbaWidth)
     //   val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-    //   bitOffset.next(conf.htConf.ptrWidth)
+    //   bitOffset.next(conf.lbaWidth)
     //   val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
     //   val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
     //   val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)

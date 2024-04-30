@@ -19,7 +19,7 @@ import spinal.sim.SimThread
 
 object RoutingTableSimHelpers {
   val conf = DedupConfig(nodeIdxWidth = 4, 
-                         rtConf = RoutingTableConfig(routingChannelCount = 8, 
+                         rtConf = RoutingTableConfig(routingChannelCount = 10, 
                                                      routingDecisionBits = 15))
 
   val instrBitWidth = DedupCoreOp().getBitsWidth
@@ -67,17 +67,17 @@ object RoutingTableSimHelpers {
   }
 
   def randResGen(printRes : Boolean = false) : BigInt = {
-    val refCount = BigInt(conf.htConf.ptrWidth, Random)
-    val ssdLba   = BigInt(conf.htConf.ptrWidth, Random)
+    val refCount = BigInt(conf.lbaWidth, Random)
+    val ssdLba   = BigInt(conf.lbaWidth, Random)
     val nodeIdx  = BigInt(conf.nodeIdxWidth   , Random)
     val tag      = BigInt(conf.rfConf.tagWidth, Random)
     val dstNode  = BigInt(conf.nodeIdxWidth   , Random)
     // instr gen
     var rawRes = BigInt(0)
     val bitOffset = SimHelpers.BitOffset()
-    bitOffset.next(conf.htConf.ptrWidth)
+    bitOffset.next(conf.lbaWidth)
     rawRes = rawRes + (refCount << bitOffset.low)
-    bitOffset.next(conf.htConf.ptrWidth)
+    bitOffset.next(conf.lbaWidth)
     rawRes = rawRes + (ssdLba << bitOffset.low)
     bitOffset.next(conf.nodeIdxWidth)
     rawRes = rawRes + (nodeIdx << bitOffset.low)
@@ -152,6 +152,65 @@ object RoutingTableSimHelpers {
     // Return the index of the node with the smallest distance
     distances.indexOf(distances.min)
   }
+
+  def chordRoutingDecisionInstr(hash: BigInt, 
+                                nodeStartList: ListBuffer[BigInt], 
+                                nodeLenList: ListBuffer[BigInt],
+                                routingDecisionBits: Int): Int = {
+    val ringSize = BigInt(1) << routingDecisionBits
+    // Function to calculate the end hash of a node's range
+    def nodeEndHash(startHash: BigInt, length: BigInt): BigInt = {
+      (startHash + length) % ringSize
+    }
+    val nodeEndList = nodeStartList.indices.map{ index =>
+      nodeEndHash(nodeStartList(index), nodeLenList(index))
+    }
+    // Determine if the hash is within a node's range
+    def inRange(endHash: BigInt): Boolean = {
+      val startVal = nodeStartList(0)
+      val endVal = hash
+      if (startVal <= endVal) {
+        endHash >= startVal && endHash <= endVal
+      } else {
+        endHash >= startVal || endHash <= endVal
+      }
+    }
+
+    val isEndInside = nodeEndList.map(a => inRange(a))
+    val isStartInside = nodeStartList.map(a => inRange(a))
+    // println(hash)
+    // println()
+    // nodeStartList.foreach(println)
+    // println()
+    // nodeLenList.foreach(println)
+    // println()
+    // isStartInside.foreach(println)
+    // for (index <- 0 until nodeEndList.length){
+    //   print(isStartInside(index))
+    // }
+    val result = isStartInside.lastIndexOf(true)
+    result
+  }
+
+  def chordRoutingDecisionRes(dstIdx: BigInt, 
+                              nodeIdxList: ListBuffer[BigInt],
+                              idxWidthBits: Int): Int = {
+    val ringSize = BigInt(1) << idxWidthBits
+    // Determine if the hash is within a node's range
+    def inRange(endHash: BigInt): Boolean = {
+      val startVal = nodeIdxList(0)
+      val endVal = dstIdx
+      if (startVal <= endVal) {
+        endHash >= startVal && endHash <= endVal
+      } else {
+        endHash >= startVal || endHash <= endVal
+      }
+    }
+
+    val isInside = nodeIdxList.map(a => inRange(a))
+    val result = isInside.lastIndexOf(true)
+    result
+  }
 }
 
 case class RoutingTableTB() extends Component{
@@ -171,7 +230,8 @@ case class RoutingTableTB() extends Component{
       val hashValueStart = in Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
       val hashValueLen = in Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
       val nodeIdx = in Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
-      val activeChannelCount = in UInt((conf.rtConf.routingChannelLogCount + 1) bits)
+      val activeChannelCount = in UInt(log2Up(conf.rtConf.routingChannelCount + 1) bits)
+      val routingMode = in Bool()
     }
   }
 
@@ -179,18 +239,18 @@ case class RoutingTableTB() extends Component{
   routingTableTop.io <> io
 }
 
-class RoutingTableTests extends AnyFunSuite {
-  test("RoutingTableTest"){
+class NearestRoutingTests extends AnyFunSuite {
+  test("Routing Table Nearest Routing Test"){
     val compiledRTL = if (sys.env.contains("VCS_HOME")) SimConfig.withVpdWave.withVCS.compile(RoutingTableTB())
     else SimConfig.withWave.compile(RoutingTableTB())
 
     compiledRTL.doSim { dut =>
-      RoutingTableSim.sim(dut)
+      RoutingTableNearestRoutingSim.sim(dut)
     }
   }
 }
 
-object RoutingTableSim {
+object RoutingTableNearestRoutingSim {
   def sim(dut: RoutingTableTB): Unit = {
     val conf = RoutingTableSimHelpers.conf
     dut.clockDomain.forkStimulus(period = 2)
@@ -221,6 +281,7 @@ object RoutingTableSim {
 
     val activeChannelCount = 4
     dut.io.routingTableContent.activeChannelCount #= BigInt(activeChannelCount)
+    dut.io.routingTableContent.routingMode        #= false
 
     hashValueStartList.append(BigInt(15) << (conf.rtConf.routingDecisionBits - 4))
     hashValueLenList  .append(BigInt(2) << (conf.rtConf.routingDecisionBits - 4))

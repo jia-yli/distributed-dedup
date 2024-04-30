@@ -32,7 +32,8 @@ case class DedupConfig(
 
   /*instr config*/
   instrTotalWidth    : Int = 512,
-  LBAWidth           : Int = 32,
+  dataNodeIdxWidth   : Int = 32, // SSD node ID
+  lbaWidth           : Int = 32, // LBA in the SSD node
   // hashInfoTotalWidth : Int = 32 * 3 + 256,
 
   // /* instr queue config */
@@ -56,7 +57,7 @@ case class DedupConfig(
   rfConf : RegisterFileConfig = RegisterFileConfig(tagWidth = 8), // 256 regs in register file
 
   // routing config
-  rtConf : RoutingTableConfig = RoutingTableConfig(routingChannelCount = 8, 
+  rtConf : RoutingTableConfig = RoutingTableConfig(routingChannelCount = 10, 
                                                    routingDecisionBits = 16),
   // 8192x4 bucket x 8 entry/bucket = 1<<18 hash table
   htConf : HashTableConfig = HashTableConfig (hashValWidth = 256, 
@@ -111,7 +112,8 @@ case class WrapDedupCoreIO(conf: DedupConfig) extends Bundle {
     val hashValueStart = in Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
     val hashValueLen = in Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
     val nodeIdx = in Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
-    val activeChannelCount = in UInt((conf.rtConf.routingChannelLogCount + 1) bits)
+    val activeChannelCount = in UInt(log2Up(conf.rtConf.routingChannelCount + 1) bits)
+    val routingMode = in Bool()
   }
 
   /** hashTab memory interface */

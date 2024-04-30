@@ -6,17 +6,19 @@ import spinal.lib._
 
 case class DecodedReadyInstr(conf: DedupConfig) extends Bundle{
   // read instr -> directly send to SSD
-  val SSDLBALen = UInt(conf.LBAWidth bits)
-  val SSDLBAStart = UInt(conf.LBAWidth bits)
-  val opCode = DedupCoreOp()
-  val tag = UInt(conf.pwConf.instrTagWidth bits)
+  val SSDLBALen   = UInt(conf.lbaWidth bits)
+  val SSDLBAStart = UInt(conf.lbaWidth bits)
+  val SSDNodeIdx  = UInt(conf.dataNodeIdxWidth bits)
+  val opCode      = DedupCoreOp()
+  val tag         = UInt(conf.pwConf.instrTagWidth bits)
 }
 
 case class DecodedWaitingInstr(conf: DedupConfig) extends Bundle{
-  val hostLBALen = UInt(conf.LBAWidth bits)
-  val hostLBAStart = UInt(conf.LBAWidth bits)
-  val opCode = DedupCoreOp()
-  val tag = UInt(conf.pwConf.instrTagWidth bits)
+  val hostLBALen      = UInt(conf.lbaWidth bits)
+  val hostLBAStart    = UInt(conf.lbaWidth bits)
+  val hostDataNodeIdx = UInt(conf.dataNodeIdxWidth bits)
+  val opCode          = DedupCoreOp()
+  val tag             = UInt(conf.pwConf.instrTagWidth bits)
 }
 
 case class PageWriterInstrDecoder(conf: DedupConfig) extends Component{
@@ -46,10 +48,11 @@ case class PageWriterInstrDecoder(conf: DedupConfig) extends Component{
           io.waitingInstrStream.translateFrom(io.rawInstrStream){ (decodedInstr, rawBits) =>
             val decodedFullInstr = WRITE2FREEInstr(conf)
             WRITE2FREEInstr(conf).decodeFromRawBits()(decodedFullInstr, rawBits)
-            decodedInstr.hostLBALen   := decodedFullInstr.hostLBALen
-            decodedInstr.hostLBAStart := decodedFullInstr.hostLBAStart
-            decodedInstr.opCode       := decodedFullInstr.opCode
-            decodedInstr.tag          := tagGenerator.value
+            decodedInstr.hostLBALen      := decodedFullInstr.hostLBALen
+            decodedInstr.hostLBAStart    := decodedFullInstr.hostLBAStart
+            decodedInstr.hostDataNodeIdx := decodedFullInstr.hostDataNodeIdx
+            decodedInstr.opCode          := decodedFullInstr.opCode
+            decodedInstr.tag             := tagGenerator.value
           }
           io.readyInstrStream.setIdle()
         }
@@ -59,10 +62,11 @@ case class PageWriterInstrDecoder(conf: DedupConfig) extends Component{
           io.waitingInstrStream.translateFrom(io.rawInstrStream){ (decodedInstr, rawBits) =>
             val decodedFullInstr = ERASEREFInstr(conf)
             ERASEREFInstr(conf).decodeFromRawBits()(decodedFullInstr, rawBits)
-            decodedInstr.hostLBALen   := 1
-            decodedInstr.hostLBAStart := 0
-            decodedInstr.opCode       := decodedFullInstr.opCode
-            decodedInstr.tag          := tagGenerator.value
+            decodedInstr.hostLBALen      := 1
+            decodedInstr.hostLBAStart    := 0
+            decodedInstr.hostDataNodeIdx := 0
+            decodedInstr.opCode          := decodedFullInstr.opCode
+            decodedInstr.tag             := tagGenerator.value
           }
           io.readyInstrStream.setIdle()
         }
@@ -81,10 +85,11 @@ case class PageWriterInstrDecoder(conf: DedupConfig) extends Component{
           io.waitingInstrStream.translateFrom(io.rawInstrStream){ (decodedInstr, rawBits) =>
             val decodedFullInstr = READSSDInstr(conf)
             READSSDInstr(conf).decodeFromRawBits()(decodedFullInstr, rawBits)
-            decodedInstr.hostLBALen   := 1
-            decodedInstr.hostLBAStart := 0
-            decodedInstr.opCode       := decodedFullInstr.opCode
-            decodedInstr.tag          := tagGenerator.value
+            decodedInstr.hostLBALen      := 1
+            decodedInstr.hostLBAStart    := 0
+            decodedInstr.hostDataNodeIdx := 0 
+            decodedInstr.opCode          := decodedFullInstr.opCode
+            decodedInstr.tag             := tagGenerator.value
           }
           io.readyInstrStream.setIdle()
         }

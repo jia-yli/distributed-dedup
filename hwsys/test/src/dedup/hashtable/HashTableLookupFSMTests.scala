@@ -354,9 +354,9 @@ object HashTableLookupHelpers{
   def decodeRes(respData:BigInt, printRes : Boolean = false) : ExecRes = {
     val bitOffset = SimHelpers.BitOffset()
 
-    bitOffset.next(conf.htConf.ptrWidth)
+    bitOffset.next(conf.lbaWidth)
     val RefCount = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-    bitOffset.next(conf.htConf.ptrWidth)
+    bitOffset.next(conf.lbaWidth)
     val SSDLBA   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
     bitOffset.next(conf.nodeIdxWidth)
     val nodeIdx  = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)

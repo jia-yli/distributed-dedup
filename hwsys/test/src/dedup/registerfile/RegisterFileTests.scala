@@ -41,8 +41,8 @@ object RegisterFileSimHelpers {
     val resBitWidth = WriteBackLookupRes(conf).getBitsWidth
     var rawRes = BigInt(0)
     rawRes = rawRes + (RefCount << 0)
-    rawRes = rawRes + (SSDLBA   << conf.htConf.ptrWidth)
-    rawRes = rawRes + (nodeIdx  << (2 * conf.htConf.ptrWidth))
+    rawRes = rawRes + (SSDLBA   << conf.lbaWidth)
+    rawRes = rawRes + (nodeIdx  << (2 * conf.lbaWidth))
     rawRes = rawRes + (tag      << (resBitWidth - conf.rfConf.tagWidth))
     rawRes
   }
@@ -194,14 +194,14 @@ object RegisterFileSim {
       val res = finalResList(idx)
       val resSHA3Hash = SimHelpers.bigIntTruncVal(res, RegisterFileSimHelpers.conf.htConf.hashValWidth - 1, 0)
       val resRefCount = SimHelpers.bigIntTruncVal(res, 
-                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth - 1,
+                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.lbaWidth - 1,
                                                   RegisterFileSimHelpers.conf.htConf.hashValWidth)
       val resSSDLBA   = SimHelpers.bigIntTruncVal(res, 
-                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth * 2 - 1, 
-                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth)
+                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.lbaWidth * 2 - 1, 
+                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.lbaWidth)
       val resNodeIdx  = SimHelpers.bigIntTruncVal(res, 
-                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth * 2 + RegisterFileSimHelpers.conf.nodeIdxWidth - 1, 
-                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.htConf.ptrWidth * 2)
+                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.lbaWidth * 2 + RegisterFileSimHelpers.conf.nodeIdxWidth - 1, 
+                                                  RegisterFileSimHelpers.conf.htConf.hashValWidth + RegisterFileSimHelpers.conf.lbaWidth * 2)
       val resOpCode   = SimHelpers.bigIntTruncVal(res, 
                                                   HashTableLookupRes(RegisterFileSimHelpers.conf).getBitsWidth - 1, 
                                                   HashTableLookupRes(RegisterFileSimHelpers.conf).getBitsWidth - DedupCoreOp().getBitsWidth)

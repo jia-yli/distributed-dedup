@@ -11,15 +11,16 @@ import coyote.HostDataIO
 import coyote.NetworkDataIO
 
 case class SysResp (conf: DedupConfig) extends Bundle {
-  val SHA3Hash      = Bits(conf.htConf.hashValWidth bits)
-  val RefCount      = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA        = UInt(conf.htConf.ptrWidth bits)
-  val paddedNodeIdx = UInt(32 bits)
-  val hostLBAStart  = UInt(conf.htConf.ptrWidth bits)
-  val hostLBALen    = UInt(conf.htConf.ptrWidth bits)
-  val padding       = UInt((512 - conf.htConf.hashValWidth - conf.htConf.ptrWidth * 4 - 32 - 1 - DedupCoreOp().getBitsWidth) bits)
-  val isExec        = Bool() 
-  val opCode        = DedupCoreOp()
+  val SHA3Hash        = Bits(conf.htConf.hashValWidth bits)
+  val RefCount        = UInt(conf.lbaWidth bits)
+  val SSDLBA          = UInt(conf.lbaWidth bits)
+  val paddedNodeIdx   = UInt(32 bits)
+  val hostLBAStart    = UInt(conf.lbaWidth bits)
+  val hostLBALen      = UInt(conf.lbaWidth bits)
+  val hostDataNodeIdx = UInt(conf.dataNodeIdxWidth bits)
+  val padding         = UInt((512 - conf.htConf.hashValWidth - conf.lbaWidth * 4 - 32 - conf.dataNodeIdxWidth - 1 - DedupCoreOp().getBitsWidth) bits)
+  val isExec          = Bool() 
+  val opCode          = DedupCoreOp()
 }
 
 class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with RenameIO {
@@ -72,7 +73,7 @@ class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with Ren
   val routingRegStart = ctrlRNumHostIntf + 3 // 11
   val rUpdateRoutingTableContent = ctrlR.createWriteOnly(Bool(), routingRegStart << log2Up(ctrlRByteSize), 0) // 11
   rUpdateRoutingTableContent.clearWhen(rUpdateRoutingTableContent)
-  val rActiveChannelCount = ctrlR.createReadAndWrite(UInt((conf.rtConf.routingChannelLogCount + 1) bits), (routingRegStart + 1) << log2Up(ctrlRByteSize), 0) // 12
+  val rActiveChannelCount = ctrlR.createReadAndWrite(UInt(log2Up(conf.rtConf.routingChannelCount + 1) bits), (routingRegStart + 1) << log2Up(ctrlRByteSize), 0) // 12
 
   networkIntf.io.updateRoutingTableContent := rUpdateRoutingTableContent
   dedupCore.io.updateRoutingTableContent := rUpdateRoutingTableContent
@@ -81,15 +82,17 @@ class WrapDedupSys(conf: DedupConfig = DedupConfig()) extends Component with Ren
   val rNodeIdx        = Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
   val rHashValueStart = Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
   val rHashValueLen   = Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
-  for (i <- 0 until conf.rtConf.routingChannelCount){ // 13 -> 36
-    rNodeIdx       (i) := ctrlR.createReadAndWrite(Reg(UInt(conf.nodeIdxWidth bits))                    , (routingRegStart + 2 + 3 * i) << log2Up(ctrlRByteSize), 0)
-    rHashValueStart(i) := ctrlR.createReadAndWrite(Reg(UInt(conf.rtConf.routingDecisionBits bits))      , (routingRegStart + 3 + 3 * i) << log2Up(ctrlRByteSize), 0)
-    rHashValueLen  (i) := ctrlR.createReadAndWrite(Reg(UInt((conf.rtConf.routingDecisionBits + 1) bits)), (routingRegStart + 4 + 3 * i) << log2Up(ctrlRByteSize), 0)
+  for (i <- 0 until conf.rtConf.routingChannelCount){ // 13 -> 42
+    rNodeIdx       (i) := ctrlR.createReadAndWrite(UInt(conf.nodeIdxWidth bits)                    , (routingRegStart + 2 + 3 * i) << log2Up(ctrlRByteSize), 0)
+    rHashValueStart(i) := ctrlR.createReadAndWrite(UInt(conf.rtConf.routingDecisionBits bits)      , (routingRegStart + 3 + 3 * i) << log2Up(ctrlRByteSize), 0)
+    rHashValueLen  (i) := ctrlR.createReadAndWrite(UInt((conf.rtConf.routingDecisionBits + 1) bits), (routingRegStart + 4 + 3 * i) << log2Up(ctrlRByteSize), 0)
   }
-  val rdmaQpnRegStart = routingRegStart + 2 + 3 * conf.rtConf.routingChannelCount // 37 -> 43
+  val rdmaQpnRegStart = routingRegStart + 2 + 3 * conf.rtConf.routingChannelCount // 43 -> 51
   for (i <- 0 until conf.rtConf.routingChannelCount - 1){
-    networkIntf.io.rdmaQpnVec(i) := ctrlR.createReadAndWrite(Reg(UInt(conf.rdmaQpnWidth bits)), (rdmaQpnRegStart + i) << log2Up(ctrlRByteSize), 0)
+    networkIntf.io.rdmaQpnVec(i) := ctrlR.createReadAndWrite(UInt(conf.rdmaQpnWidth bits), (rdmaQpnRegStart + i) << log2Up(ctrlRByteSize), 0)
   }
+  val rRoutingMode = ctrlR.createReadAndWrite(Bool(), (rdmaQpnRegStart + conf.rtConf.routingChannelCount - 1 ) << log2Up(ctrlRByteSize), 0) // 52 
+  dedupCore.io.routingTableContent.routingMode    := rRoutingMode
 
   dedupCore.io.routingTableContent.hashValueStart := rHashValueStart
   dedupCore.io.routingTableContent.hashValueLen   := rHashValueLen

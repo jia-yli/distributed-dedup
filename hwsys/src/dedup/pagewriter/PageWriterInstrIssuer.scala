@@ -36,7 +36,7 @@ case class PageWriterInstrIssuer(conf: DedupConfig) extends Component{
     val fire  = Bool() default (False)
 
     // slicing: slice instruction with pagecount = 10 to 10x instr on one page 
-    val slicingCounter = Counter(conf.LBAWidth bits)
+    val slicingCounter = Counter(conf.lbaWidth bits)
 
     // payload assignment
     payload.SHA3Hash     := io.lookupResStream.payload.SHA3Hash
@@ -45,6 +45,7 @@ case class PageWriterInstrIssuer(conf: DedupConfig) extends Component{
     payload.nodeIdx      := io.lookupResStream.payload.nodeIdx
     payload.hostLBAStart := io.waitingInstrStream.hostLBAStart + slicingCounter
     payload.hostLBALen   := 1  // sliced
+    payload.hostDataNodeIdx := io.waitingInstrStream.hostDataNodeIdx
     payload.opCode       := io.lookupResStream.payload.opCode
     payload.tag          := io.waitingInstrStream.tag
 
@@ -95,6 +96,7 @@ case class PageWriterInstrIssuer(conf: DedupConfig) extends Component{
       io.instrIssueStream.payload.RefCount     := 0
       io.instrIssueStream.payload.SSDLBA       := io.readyInstrStream.SSDLBAStart
       io.instrIssueStream.payload.nodeIdx      := 0
+      io.instrIssueStream.payload.hostDataNodeIdx := io.readyInstrStream.SSDNodeIdx
       io.instrIssueStream.payload.hostLBAStart := 0
       io.instrIssueStream.payload.hostLBALen   := io.readyInstrStream.SSDLBALen
       io.instrIssueStream.payload.opCode       := io.readyInstrStream.opCode

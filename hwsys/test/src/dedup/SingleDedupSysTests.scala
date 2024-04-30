@@ -75,9 +75,10 @@ object SingleDedupSysSim {
     // fill all word with page index
     val uniquePgData = List.tabulate[BigInt](uniquePageNum*pageSize/bytePerWord){idx => idx/(pageSize/bytePerWord)}
     
+    val simDataNode = BigInt (55)
     val opStrmData: ListBuffer[BigInt] = ListBuffer()
     for (i <- 0 until opNum) {
-      val newInstr = DedupCoreSimHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp)
+      val newInstr = DedupCoreSimHelpers.writeInstrGen(2*i*pagePerOp,pagePerOp, simDataNode)
       opStrmData.append(newInstr)
     }
 
@@ -168,6 +169,7 @@ object SingleDedupSysSim {
       setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (14 + 3 * index) << 3, 0) // start
       setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, (15 + 3 * index) << 3, {if (index == 0) (1 << conf.rtConf.routingDecisionBits) else 0}) // len
     }
+    setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 52 << 3, 1) // routing mode
     setAxi4LiteReg(dut.clockDomain, dut.io.axi_ctrl, 11 << 3, 1)
 
     // confirm initDone
@@ -204,20 +206,21 @@ object SingleDedupSysSim {
                                                                       goldenPgIdx =  goldenPgIdx(respIdx),
                                                                       goldenOpCode = 1,
                                                                       checkSha3 = false,
-                                                                      goldenSha3  = 0)
+                                                                      goldenSha3  = 0,
+                                                                      goldenDataNode = simDataNode)
 
       // val bitOffset = SimHelpers.BitOffset()
       // bitOffset.next(conf.htConf.hashValWidth)
       // val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       // bitOffset.next(conf.nodeIdxWidth)
       // val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      // bitOffset.next(conf.htConf.ptrWidth)
+      // bitOffset.next(conf.lbaWidth)
       // val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       // val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
       // val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
@@ -282,16 +285,18 @@ object SingleDedupSysSim {
       val bitOffset = SimHelpers.BitOffset()
       bitOffset.next(conf.htConf.hashValWidth)
       val sha3Hash     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      bitOffset.next(conf.htConf.ptrWidth)
+      bitOffset.next(conf.lbaWidth)
       val RefCount     = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      bitOffset.next(conf.htConf.ptrWidth)
+      bitOffset.next(conf.lbaWidth)
       val SSDLBA       = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       bitOffset.next(32)
       val nodeIdx      = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      bitOffset.next(conf.htConf.ptrWidth)
+      bitOffset.next(conf.lbaWidth)
       val hostLBAStart = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
-      bitOffset.next(conf.htConf.ptrWidth)
+      bitOffset.next(conf.lbaWidth)
       val hostLBALen   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
+      bitOffset.next(conf.dataNodeIdxWidth)
+      val hostDataNodeIdx   = SimHelpers.bigIntTruncVal(respData, bitOffset.high, bitOffset.low)
       val isExec       = SimHelpers.bigIntTruncVal(respData, 509, 509)
       val opCode       = SimHelpers.bigIntTruncVal(respData, 511, 510)
       
@@ -300,6 +305,7 @@ object SingleDedupSysSim {
       assert(nodeIdx == simNodeIdx)
       assert(hostLBAStart == 0)
       assert(hostLBALen == 1)
+      assert(hostDataNodeIdx == 0)
       assert(isExec == 1)
       assert(opCode == 3)
 
@@ -355,7 +361,8 @@ object SingleDedupSysSim {
                                                                       goldenPgIdx = 0,
                                                                       goldenOpCode = 2,
                                                                       checkSha3 = true,
-                                                                      goldenSha3 = uniquePageSha3(respIdx2 % uniquePageNum))
+                                                                      goldenSha3 = uniquePageSha3(respIdx2 % uniquePageNum),
+                                                                      goldenDataNode = BigInt(0))
       // val SHA3Hash     = SimHelpers.bigIntTruncVal(respData, 255, 0)
       // val RefCount     = SimHelpers.bigIntTruncVal(respData, 287, 256)
       // val SSDLBA       = SimHelpers.bigIntTruncVal(respData, 319, 288)

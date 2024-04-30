@@ -14,8 +14,8 @@ case class RoutedLookupInstr(conf: DedupConfig) extends Bundle{
 }
 
 case class RoutedWriteBackLookupRes (conf: DedupConfig) extends Bundle {
-  val RefCount = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
+  val RefCount = UInt(conf.lbaWidth bits)
+  val SSDLBA   = UInt(conf.lbaWidth bits)
   val nodeIdx  = UInt(conf.nodeIdxWidth bits)
   val tag      = UInt(conf.rfConf.tagWidth bits)
   val dstNode  = UInt(conf.nodeIdxWidth bits)
@@ -35,10 +35,8 @@ case class PaddedRoutedWriteBackLookupRes (conf: DedupConfig) extends Bundle {
   val isInstr      = Bool() // False
 }
 
-case class RoutingTableConfig(routingChannelCount : Int = 1, routingDecisionBits : Int = 16){
+case class RoutingTableConfig(routingChannelCount : Int = 10, routingDecisionBits : Int = 16){
   assert(routingChannelCount > 0, "must have at least 1 port for local lookup")
-  val routingChannelLogCount = log2Up(routingChannelCount)
-  assert((1 << routingChannelLogCount) == routingChannelCount, "Channel count must be power of 2")
 }
 
 case class RoutingTableTop(conf: DedupConfig) extends Component {
@@ -57,7 +55,8 @@ case class RoutingTableTop(conf: DedupConfig) extends Component {
       val hashValueStart = in Vec(UInt(conf.rtConf.routingDecisionBits bits), conf.rtConf.routingChannelCount)
       val hashValueLen = in Vec(UInt((conf.rtConf.routingDecisionBits + 1) bits), conf.rtConf.routingChannelCount)
       val nodeIdx = in Vec(UInt(conf.nodeIdxWidth bits), conf.rtConf.routingChannelCount)
-      val activeChannelCount = in UInt((conf.rtConf.routingChannelLogCount + 1) bits)
+      val activeChannelCount = in UInt(log2Up(conf.rtConf.routingChannelCount + 1) bits)
+      val routingMode = in Bool()
     }
   }
   val rNodeIdx = Reg(UInt(conf.nodeIdxWidth bits)) init 0

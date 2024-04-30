@@ -30,35 +30,42 @@ object SSDOp extends SpinalEnum(binarySequential) {
 
 case class CombinedFullInstr (conf: DedupConfig) extends Bundle {
   // contain all info for Resp and SSD, and also tag for arbitration
-  val SHA3Hash     = Bits(conf.htConf.hashValWidth bits)
-  val RefCount     = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA       = UInt(conf.htConf.ptrWidth bits)
-  val nodeIdx      = UInt(conf.nodeIdxWidth bits)
-  val hostLBAStart = UInt(conf.htConf.ptrWidth bits)
-  val hostLBALen   = UInt(conf.htConf.ptrWidth bits)
-  val opCode       = DedupCoreOp()
-  val tag          = UInt(conf.pwConf.instrTagWidth bits)
+  val SHA3Hash        = Bits(conf.htConf.hashValWidth bits)
+  val RefCount        = UInt(conf.lbaWidth bits)
+  // fpga store position
+  val SSDLBA          = UInt(conf.lbaWidth bits)
+  val nodeIdx         = UInt(conf.nodeIdxWidth bits)
+  // original instr
+  val hostLBAStart    = UInt(conf.lbaWidth bits)
+  val hostLBALen      = UInt(conf.lbaWidth bits)
+  val hostDataNodeIdx = UInt(conf.dataNodeIdxWidth bits)
+  val opCode          = DedupCoreOp()
+  val tag             = UInt(conf.pwConf.instrTagWidth bits)
 }
 
 case class PageWriterResp (conf: DedupConfig) extends Bundle {
-  val SHA3Hash     = Bits(conf.htConf.hashValWidth bits)
-  val RefCount     = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA       = UInt(conf.htConf.ptrWidth bits)
-  val nodeIdx      = UInt(conf.nodeIdxWidth bits)
-  val hostLBAStart = UInt(conf.htConf.ptrWidth bits)
-  val hostLBALen   = UInt(conf.htConf.ptrWidth bits)
+  val SHA3Hash        = Bits(conf.htConf.hashValWidth bits)
+  val RefCount        = UInt(conf.lbaWidth bits)
+  // fpga store position
+  val SSDLBA          = UInt(conf.lbaWidth bits)
+  val nodeIdx         = UInt(conf.nodeIdxWidth bits)
+  // original instr
+  val hostLBAStart    = UInt(conf.lbaWidth bits)
+  val hostLBALen      = UInt(conf.lbaWidth bits)
+  val hostDataNodeIdx = UInt(conf.dataNodeIdxWidth bits)
   // True means, new page(write exec), or GC (del exec), always True in read
-  val isExec       = Bool() 
-  val opCode       = DedupCoreOp()
+  val isExec          = Bool() 
+  val opCode          = DedupCoreOp()
 }
 
 case class SSDInstr (conf: DedupConfig) extends Bundle {
   // page header + operation, since header is small
   val SHA3Hash    = Bits(conf.htConf.hashValWidth bits)
-  val RefCount    = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBAStart = UInt(conf.htConf.ptrWidth bits)
+  val RefCount    = UInt(conf.lbaWidth bits)
+  val SSDNodeIdx  = UInt(conf.dataNodeIdxWidth bits)
+  val SSDLBAStart = UInt(conf.lbaWidth bits)
   // in dedup, write/erase LBALen = 1, read LBALen = input LBALen
-  val SSDLBALen   = UInt(conf.htConf.ptrWidth bits)
+  val SSDLBALen   = UInt(conf.lbaWidth bits)
   val nodeIdx     = UInt(conf.nodeIdxWidth bits)
   val opCode      = SSDOp()
 }
@@ -154,6 +161,7 @@ case class PageWriterSubSystem(conf: DedupConfig) extends Component {
     io.SSDInstrIn.translateFrom(forkedFullInstrStream._1){(storageInstr, fullInstr) =>
       storageInstr.SHA3Hash    := fullInstr.SHA3Hash
       storageInstr.RefCount    := fullInstr.RefCount
+      storageInstr.SSDNodeIdx  := fullInstr.hostDataNodeIdx
       storageInstr.SSDLBAStart := fullInstr.SSDLBA
       storageInstr.SSDLBALen   := fullInstr.hostLBALen
       storageInstr.nodeIdx     := fullInstr.nodeIdx
@@ -178,6 +186,7 @@ case class PageWriterSubSystem(conf: DedupConfig) extends Component {
       resp.nodeIdx       := fullInstr.nodeIdx
       resp.hostLBAStart  := fullInstr.hostLBAStart
       resp.hostLBALen    := fullInstr.hostLBALen
+      resp.hostDataNodeIdx := fullInstr.hostDataNodeIdx
       resp.opCode        := fullInstr.opCode
 
       when(fullInstr.opCode === DedupCoreOp.WRITE2FREE){

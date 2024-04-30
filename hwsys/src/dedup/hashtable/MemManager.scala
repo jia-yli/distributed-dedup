@@ -40,7 +40,7 @@ case class MemManagerIO(htConf: HashTableConfig) extends Bundle {
 case class MemManager(htConf: HashTableConfig) extends Component {
   val conf = MemManagerConfig(htConf)
 
-  val idxBufferDepth = conf.idxPerTransfer * 17
+  val idxBufferDepth = conf.idxPerTransfer * 2
   // val initIdxBlockCount = 16
 
   val idxBufferThr = idxBufferDepth - conf.idxPerTransfer
@@ -112,7 +112,7 @@ case class MemManager(htConf: HashTableConfig) extends Component {
     // }
   }
   
-  io.mallocIdx << StreamArbiterFactory.lowerFirst.transactionLock.onArgs(demuxIdxBufferPop(0).pipelined(StreamPipe.FULL), idxBank.io.pop.pipelined(StreamPipe.FULL), idxReleaseStreamCut.pipelined(StreamPipe.FULL))
+  io.mallocIdx << StreamArbiterFactory.lowerFirst.transactionLock.onArgs(demuxIdxBufferPop(0).queue(conf.idxPerTransfer * 16).pipelined(StreamPipe.FULL), idxBank.io.pop.pipelined(StreamPipe.FULL), idxReleaseStreamCut.pipelined(StreamPipe.FULL))
 
   // when(io.initEn){
   //   idxCounter.clear()

@@ -23,23 +23,23 @@ case class RfInstrEntry(conf: DedupConfig) extends Bundle{
 
 // write back lookup result
 case class WriteBackLookupRes (conf: DedupConfig) extends Bundle {
-  val RefCount = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
+  val RefCount = UInt(conf.lbaWidth bits)
+  val SSDLBA   = UInt(conf.lbaWidth bits)
   val nodeIdx  = UInt(conf.nodeIdxWidth bits)
   val tag      = UInt(conf.rfConf.tagWidth bits)
 }
 
 case class HashTableLookupRes (conf: DedupConfig) extends Bundle {
   val SHA3Hash = Bits(conf.htConf.hashValWidth bits)
-  val RefCount = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
+  val RefCount = UInt(conf.lbaWidth bits)
+  val SSDLBA   = UInt(conf.lbaWidth bits)
   val nodeIdx  = UInt(conf.nodeIdxWidth bits)
   val opCode   = DedupCoreOp()
 }
 
 case class RfResEntry (conf: DedupConfig) extends Bundle {
-  val RefCount = UInt(conf.htConf.ptrWidth bits)
-  val SSDLBA   = UInt(conf.htConf.ptrWidth bits)
+  val RefCount = UInt(conf.lbaWidth bits)
+  val SSDLBA   = UInt(conf.lbaWidth bits)
   val nodeIdx  = UInt(conf.nodeIdxWidth bits)
 }
 

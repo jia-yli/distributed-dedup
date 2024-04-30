@@ -37,10 +37,12 @@ class NetworkIntf(conf: DedupConfig) extends Component {
   io.networkData.rdma_0_rd_req.freeRun()
   /** recv path */
   io.networkData.rdma_0_wr_req.freeRun()
-  io.recvDataStrm.translateFrom(io.networkData.axis_rdma_0_sink)(_ := _.tdata)
+  val networkRecvBuffer = StreamFifo(Bits(512 bits), 512)
+  networkRecvBuffer.io.push.translateFrom(io.networkData.axis_rdma_0_sink)(_ := _.tdata)
+  io.recvDataStrm << networkRecvBuffer.io.pop
 
   /** send path */
-  val sendQDepth = 64
+  val sendQDepth = 128
   val pipelinedSendDataStrmVec = Vec(Stream(Bits(512 bits)), conf.rtConf.routingChannelCount - 1)
   (pipelinedSendDataStrmVec, io.sendDataStrmVec).zipped.foreach(_ << _.pipelined(StreamPipe.FULL))
   val batchedStreamArbiterOutput = BatchedStreamArbiterFactory().roundRobin.fragmentLock.on(sendQDepth, pipelinedSendDataStrmVec)

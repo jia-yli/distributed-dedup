@@ -33,8 +33,8 @@ class SysIntf() extends Component {
   val outputSelect = isInstr.asUInt
 
   val frgmCounter = Counter(conf.pgWord)
-  val instrPageCount = Reg(UInt(conf.LBAWidth bits))
-  val pageCounter = Counter(conf.LBAWidth bits, frgmCounter.willOverflow)
+  val instrPageCount = Reg(UInt(conf.lbaWidth bits))
+  val pageCounter = Counter(conf.lbaWidth bits, frgmCounter.willOverflow)
 
   /** read path */
   val fsm = new StateMachine {
@@ -57,7 +57,7 @@ class SysIntf() extends Component {
           // is write instr, means the next input will be page data
           val decodedInstr = WRITE2FREEInstr(conf)
           WRITE2FREEInstr(conf).decodeFromRawBits()(decodedInstr, io.mergedStrm.payload)
-          when(io.mergedStrm.fire){
+          when(io.mergedStrm.fire && (decodedInstr.hostLBALen > 0)){
             isInstr        := False
             frgmCounter.clear()
             instrPageCount := decodedInstr.hostLBALen
