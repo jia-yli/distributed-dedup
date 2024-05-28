@@ -52,48 +52,47 @@ sudo apt-get install sbt
 2. Build and publish SpinalCryto locally by `sbt publishLocal` under `SpinalCrypto/`. The lib path will be in `~/.ivy2/local/com.github.spinalhdl/`
 
 ### Usage
+#### Tests
+Run all tests. Sometimes this may fail and Verilator waveform all 0. It is recommended to run tests individually.
+```bash
+./mill hwsys.test
+```
+
+Run specific test
+```Bash
+./mill hwsys.test.testSim dedup.hashtable.HashTableLookupFSMTests
+```
+
+#### Generate Verilog
+First check `hwsys/src/dedup/WrapDedupCore.scala` for configurations, especially the hash table configurations are the one you want 
 
 Generate Verilog under `generated_rtl/`
 ```Bash
 # ./mill will download(if not exist) and call correct version of Mill
 ./mill hwsys.runMain dedup.GenDedupSys
-```
-
-Run all tests
-```bash
-./mill hwsys.test
-```
-
-Run target waveform simulation
-```Bash
-./mill hwsys.test.testSim dedup.hashtable.HashTableLookupFSMTests
+# Then move the folder to target position under coyote in remote server.
+./sync_remote_v.sh
 ```
 
 ## FPGA Deployment
-### Coyote setup
+### Coyote setup(with RDMA)
 
-https://github.com/rbshi/coyote/tree/dev_dlm
+<!-- https://github.com/rbshi/coyote/tree/dev_dlm -->
+https://github.com/jia-yli/coyote-rdma
 
 ```Bash
 # build coyote
-# git clone https://github.com/rbshi/coyote.git --branch=dev_dlm
-git clone https://github.com/jia-yli/coyote.git
+git clone https://github.com/jia-yli/coyote-rdma.git
 
 cd coyote/hw
 mkdir build && cd build
 
 # use desired number memory channel: -DN_MEM_CHAN
-cmake .. -DFDEV_NAME=u55c -DVITIS_HLS=1 -DEN_BPSS=1 -DHBM_BPSS=1 -DEN_UCLK=1 -DUCLK_F=250 -DAXI_ID_BITS=6 -DAPPS=dedup -DAPPS_CONFIG=4k -DN_MEM_CHAN=7 -DEN_MEM_BPSS=1
+# cmake options are under hw/examples.cmake, be sure to use correct mem channels: set(N_CARD_AXI ${NUM_FSM + 1}), where NUM_FSM is the number of FSM in hash table, +1 for the memory manager.
 cmake .. -DFDEV_NAME=u55c -DEXAMPLE=perf_dedup
 
 # use screen session on build server
 screen
 make shell && make compile
 # coyote done
-
-# lsof +D /path
-# kill(n)
-# put coyote and dedup system together
-# cd dedup/vivado_proj
-# ./build_user.sh
 ```
